@@ -54,3 +54,18 @@ Very important: Discrete Movement (Recognizable Start and Stop of the movement w
 
 
 ---
+
+
+## Pitch
+
+- 5 min (auf keinen Fall mehr).
+- 4 Folien.
+  - 1. Team und Problem.
+  - 2./3. Folie Implementierungsdetails.
+  - 4. Folie: Gefilmte Demo (keine Live Demo).
+- Schöne Animationen sind wichtig!
+- Code in Git Repo der Fak Inf ablegen mit Axenie als Maintainer.
+- Folien in Repo ablegen (als .pdf).
+- Alle Medien (also auch Präsi Videos) auf Git ablegen.
+- Mündlich darauf vorbereiten, Fragen zum Projekt zu beantworten (auch kritische).
+- Abgabe: 1. Juli 23:59. Kein Commit mehr danach.

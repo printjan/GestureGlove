@@ -1,0 +1,6 @@
+- Python 3.10
+- numpy
+- pandas
+- scipy.signal
+- scikit-learn
+- PyTorch
