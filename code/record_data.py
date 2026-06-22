@@ -10,9 +10,17 @@ PORT_IMU1 = 'COM10'
 PORT_IMU2 = 'COM11' # Passe dies entsprechend deinem Setup an
 BAUDRATE = 115200
 
+GESTURE_LABELS = {
+    0: "none",
+    1: "circle_clockwise",
+    2: "circle_counterclockwise"
+}
+
+
 # Globale Variablen für Threading/Control
 running = True
 recording = False
+current_gesture = 0
 
 imu1_data_buffer = []
 imu2_data_buffer = []
@@ -22,17 +30,32 @@ def input_thread(imu1, imu2):
     Dieser Thread wartet auf Console-Input vom Nutzer, 
     um die Aufnahme zu starten und zu stoppen.
     """
-    global recording, running, imu1_data_buffer, imu2_data_buffer
+    global recording, running, imu1_data_buffer, imu2_data_buffer, GESTURE_LABELS
     
     print("\n--- Setup Complete ---")
     while running:
         # Blockiert, bis [Enter] gedrückt wird
-        user_input = input(">> Drücke [Enter] um die Aufnahme zu STARTEN (oder tippe 'q' zum Beenden)...\n")
+        input_str = "Geste auswählen:  "
+        for i in GESTURE_LABELS:
+            input_str += f"{i}: {GESTURE_LABELS[i]}  "
+        user_input = input(f"{input_str} und dann [Enter] um die Aufnahme zu STARTEN (oder tippe 'q' zum Beenden)...\n")
         
         if user_input.strip().lower() == 'q':
             running = False
             break
-            
+        
+        try:
+            gesture_id = int(user_input.strip())
+            if gesture_id in GESTURE_LABELS:
+                current_gesture = gesture_id
+                print(f"Ausgewählte Geste: {GESTURE_LABELS[current_gesture]}")
+            else:
+                print("Ungültige Eingabe. Bitte eine gültige Geste auswählen.")
+                continue
+        except ValueError:
+            print("Ungültige Eingabe. Bitte eine Zahl eingeben.")
+            continue
+
         print(">>> RECORDING GESTARTET <<<")
         # Puffer leeren, falls Reste existieren
         imu1.get_data()
@@ -90,9 +113,9 @@ def process_and_save_data():
         merged_df['time_rel_s'] = merged_df['pc_timestamp'] - start_time
         
     # Ordner für Datensätze erstellen
-    dataset_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "datasets"))
-    os.makedirs(dataset_dir, exist_ok=True)
-    filename = os.path.join(dataset_dir, f"gesture_record_{int(time.time())}.csv")
+    gesture_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "datasets", GESTURE_LABELS[current_gesture]))
+    os.makedirs(gesture_dir, exist_ok=True)
+    filename = os.path.join(gesture_dir, f"gesture_record_{int(time.time())}.csv")
     
     merged_df.to_csv(filename, index=False)
     print(f"Datensatz gespeichert unter: {filename}\n")
