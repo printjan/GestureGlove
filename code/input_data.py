@@ -71,11 +71,11 @@ class IMUDataInput:
                     line = self.ser.readline().decode('utf-8').strip()
                     pc_timestamp = time.time()
                     
-                    # Expected format now: timestamp_ms, accX, accY, accZ, gyrX, gyrY, gyrZ
+                    # Expected format now: timestamp_us, accX, accY, accZ, gyrX, gyrY, gyrZ
                     data = line.split(',')
                     if len(data) == 7:
                         try:
-                            esp_ms = int(data[0])
+                            esp_us = int(data[0])
                             ax, ay, az, gx, gy, gz = map(float, data[1:])
                             
                             # Roll und Pitch berechnen
@@ -87,8 +87,9 @@ class IMUDataInput:
                             pitch_kf = self.kf_pitch.update_estimate(pitch)
                             
                             packed_data = {
-                                'pc_timestamp': pc_timestamp,
-                                'esp_ms': esp_ms,
+                                'sensor_id': self.name,
+                                'pc_timestamp_us': int(pc_timestamp * 1e6),
+                                'esp_timestamp_us': esp_us,
                                 'accX': ax, 'accY': ay, 'accZ': az,
                                 'gyrX': gx, 'gyrY': gy, 'gyrZ': gz,
                                 'roll': roll, 'pitch': pitch,

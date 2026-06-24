@@ -24,7 +24,7 @@ void setup()
 
 void loop()
 {
-  unsigned long timestamp = millis();
+  unsigned long timestamp = micros();
 
   // Read accelerometer data (in g-force)
   accX = myIMU.readFloatAccelX();
@@ -51,5 +51,5 @@ void loop()
   Serial.print(",");
   Serial.println(gyrZ);
 
-  delay(100); // 10 Hz update rate
+  delay(10); // 100 Hz update rate
 }
