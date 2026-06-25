@@ -2,13 +2,13 @@ import time
 import os
 import threading
 import pandas as pd
+# pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 from input_data import IMUDataInput
 from sync import process_stream
+import device_resolution
 
 # --- Configuration ---
-PORT_IMU1 = 'COM10'
-PORT_IMU2 = 'COM11'
 BAUDRATE = 115200
 
 RECORD_DURATION_S = 1.5
@@ -191,9 +191,17 @@ def plot_data(df):
 
 def main():
     # Sensoren initialisieren
-    imu1 = IMUDataInput(port=PORT_IMU1, baudrate=BAUDRATE, name="IMU1")
-    imu2 = IMUDataInput(port=PORT_IMU2, baudrate=BAUDRATE, name="IMU2")
+    device_resolution.print_available_serial_ports()
 
+    port_imu1 = device_resolution.resolve_device_port("imu1")
+    port_imu2 = device_resolution.resolve_device_port("imu2")
+
+    print(f"Resolved IMU1 -> {port_imu1}")
+    print(f"Resolved IMU2 -> {port_imu2}")
+
+    imu1 = IMUDataInput(port=port_imu1, baudrate=BAUDRATE, name="IMU1")
+    imu2 = IMUDataInput(port=port_imu2, baudrate=BAUDRATE, name="IMU2")
+    
     # Reader-Threads starten
     imu1.start()
     imu2.start()

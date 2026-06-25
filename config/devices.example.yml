@@ -1,0 +1,25 @@
+# config/devices.example.yml
+#
+# Kopiere diese Datei nach config/devices.yml und trage die Seriennummern
+# deiner Boards ein.
+#
+# Die Seriennummer unterscheidet sich je nach Betriebssystem für dasselbe Board:
+#   Windows  → letztes Segment der hwid, z.B. "6&155ED617&0&0000"
+#   macOS    → USB-Seriennummer des Chips,  z.B. "E6632038A34E2B38"
+#
+# Um die Seriennummern der verbundenen Boards zu ermitteln:
+#   python code/device_resolution.py
+#
+# serial_number kann ein einzelner String (nur ein OS) oder eine Liste sein:
+
+imu1:
+  role: wrist
+  serial_number:
+    - "REPLACE_WITH_WINDOWS_ID"   # Windows: letztes Segment der hwid
+    - "REPLACE_WITH_MAC_SERIAL"   # macOS:   USB-Seriennummer
+
+imu2:
+  role: index
+  serial_number:
+    - "REPLACE_WITH_WINDOWS_ID"
+    - "REPLACE_WITH_MAC_SERIAL"

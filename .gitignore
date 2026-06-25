@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .claude/
+config/devices.py
+config/devices.yml
+!config/devices.example.yml

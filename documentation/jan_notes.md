@@ -143,6 +143,64 @@ Analyse the project. Then Look at our persumed process - Build a Detailed Descri
 
 
 
+---
+
+
+
+# Python Environment
+
+
+On my macbook I used the following commands to set up a virtual python environment for this project using miniconda:
+```
+conda config --prepend envs_dirs /opt/homebrew/Caskroom/miniconda/base/envs 
+conda create -n data_fusion_env_1 python=3.11 -y
+conda activate data_fusion_env_1
+python -m pip install --upgrade pip setuptools wheel
+
+conda install -c conda-forge -y \
+  numpy \
+  pandas \
+  scipy \
+  scikit-learn \
+  matplotlib \
+  pyserial \
+  tqdm \
+  joblib \
+  ipykernel \
+  jupyterlab \
+  notebook \
+  pyyaml \
+  h5py \
+  pyarrow \
+  filterpy \
+  tensorboard
+
+python -m pip install torch torchvision torchaudio
+
+python -m pip install \
+  opencv-python \
+  mediapipe \
+  pyautogui \
+  pynput
+
+python -m pip install tensorflow tensorflow-metal
+
+python -m ipykernel install --user \
+  --name data_fusion_env_1 \
+  --display-name "Python (data_fusion_env_1)"
+```
+Write a Jupyter Notebook Script, which I can run in the project folder and that creates a matching pyhton environment `data_fusion_env_1` on my windows 11 computer with a nvidia 3080 gpu and a ryzen 9 cpu in `c:\ProgramData\python_envs`.
+
+Also explain how I can figure out on my windows 11 machine which XIAOML Kit is connected to which COM Port.
+
+
+
+```
+conda activate data_fusion_env_1
+```
+
+
+
 
 
 
