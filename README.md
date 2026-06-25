@@ -1,37 +1,52 @@
 # Data Fusion Project
 
 
-
-
-
----
-
-
-
 ## Team
-
 
 - Lucas Horn: `hornlu95907@th-nuernberg.de`
 - Jan Tichner: `tischnerja95752@th-nuernberg.de`
 
 
+---
+
+
+## Hardware Setup
+
+### Sensor board:
+
+- We are using two `XIAOML Kit` devices: Designed by Professor Vijay Janapa Reddi (Harvard University), author of the Machine Learning Systems textbook. One at the wrist and one at the index finger.
+- What's inside: XIAO ESP32-S3 Sense, CAM • IMU • SD Toolkit
+- Advertising: Build keyword detection, image classification, motion detection, object detection, and more
+- Links: For ...
+  - Learners: mlsysbook.ai
+  - Builders: mlsysbook.ai/kits
+  - Developers: github.com/mlsysbook
+
+### Setup:
+
+- The two XIAOML Kits are directly conncted to the computer via USB-C.
+- IMU Data will be streamed unprocessed via USB-C-Serial to the computer.
+- All processing, fusion, filtering, and ML will run on the Computer. 
+
 
 ---
 
 
+## Project description
 
-## Gesture Recognition
+**Setup:**
+- One XIAOML Kit on the wrist (IMU Data).
+- One XIAOML Kit on the tip of the index finger (Camera Data).
+- Orientation usb-c-plug downward and backward.
+- Mounted on right hand.
+  
+**Goal:**
+- Recognize arm- and hand-gestures with wrist worn IMU Sensor.
+- Demonstation: Control power point with hand gestures.
 
-
-- Goal: 
-  - Recognize Arm-Gestures with wrist worn IMU Sensor.
-  - Use arm Gestors as an air mouse to interact with the computer.
-- Possible Extension: 
-  - Also recognize Hand gestures with webcam.
-- Demonstration: 
-  - Control power point slides by hand gestures.
-  - Cotrol the power point laser pointer by hand movement.
-
+**Possible Extension:**
+- Use finger as an air mouse to interact with the computer.
+- Demonstration: Cotrol the power point laser pointer by hand movement.
 
 
 ---
@@ -39,16 +54,55 @@
 
 ## Guestures
 
+**Very important:** Discrete Movement (Recognizable Start and Stop of the movement with a stationary moment before and after to differentiate the geusture from natural movement)!
 
-Very important: Discrete Movement (Recognizable Start and Stop of the movement with a stationary moment before and after to differentiate the geusture from natural movement)!
+### Arm gestures
+
+**Swipe Right / Swipe Left:**
+- Movement: Horizonal movement of the hand with dedicated still moment at the end and the beginning of the gesture.
+- Demonstration: Next / Previous slide in powerpoint.
+**Jerk Up / Jerk Down:**
+- Movement: Vertical movement of the hand with dedicated still moment at the end and the beginning of the gesture.
+- Demonstration: Volume Up / Volume Down.
+**Circle Clockwise / Circle Counter Clockwise:**
+- Movement: Clockwise / Counter Clockwise movement of the wrist with dedicated still moment at the end and the beginning of the gesture.
+- Demonstration: Toggle Laser Pointer Mode.
+
+### Hand gestures
+
+**Make fist:**
+- Movement: Close hand (make fist) and immediately open it again twice. Hand celarly open at the end and beginning of the gesture. During the gesture arm stays still
+- Demonstration: Toggle Laser Pointer Mode.
+
+### None
+
+**None class:**
+- Movement: Idle: Hold still or slightly move indiscriminateley.
+- Demonstration: Speaking and moving naturally.
+
+### Naming scheme
+
+In the dataset an classifiers the naming scheme will be as follows:
+
+```
+[
+  "none",
+  "swipe_left",
+  "swipe_right",
+  "circle_cw",
+  "circle_ccw",
+  "fist",
+  "jerk_down",
+  "jerk_up"
+]
+```
 
 
-- Swipe: Right / Left / Up / Down:
-- Circle: Right / Left
+---
 
 
+## Project Strucure 
 
-## Movement: Air mouse
 
 
 
