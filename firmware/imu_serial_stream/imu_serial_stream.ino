@@ -14,7 +14,6 @@ void setup() {
   unsigned long start_ms = millis();
   while (!Serial && millis() - start_ms < 3000) {
     delay(10);
-    git merge-- no - ff-- no - commit origin / main
   }
 
   Wire.begin();
@@ -37,7 +36,14 @@ void loop() {
     return;
   }
 
+  // Nächsten Sample-Zeitpunkt planen. Liegen wir bereits mehr als eine Periode
+  // zurück (z.B. durch einen langen Serial-Flush), NICHT per Burst nachholen,
+  // sondern den Takt neu ab "now" aufsetzen. So bleibt die Rate hart bei 100 Hz
+  // und es entstehen keine Bursts mit zu vielen Datensätzen.
   next_sample_us += SAMPLE_PERIOD_US;
+  if ((long)(now - next_sample_us) >= 0) {
+    next_sample_us = now + SAMPLE_PERIOD_US;
+  }
 
   unsigned long timestamp = micros();
 
