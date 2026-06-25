@@ -110,8 +110,10 @@ def process_and_save_data():
 
     # Erstes valides Fenster speichern (exakt TARGET_SAMPLES Zeilen)
     save_df = valid_windows[0].copy()
-    start_time = save_df['sync_time_us'].iloc[0]
-    save_df['time_rel_s'] = (save_df['sync_time_us'] - start_time) / 1e6
+
+    # Timestamps dienen nur zur Synchronisation und werden nicht gespeichert.
+    # Übrig bleiben ausschließlich die reinen Sensorwerte (acc/gyr je IMU).
+    save_df = save_df.drop(columns=['sync_time_us'], errors='ignore')
 
     gesture_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "datasets", GESTURE_LABELS[current_gesture]))
     os.makedirs(gesture_dir, exist_ok=True)
@@ -127,59 +129,44 @@ def process_and_save_data():
 def plot_data(df):
     """
     Erzeugt einen rudimentären Plot der zuletzt aufgezeichneten Daten.
+    Da keine Timestamps mehr gespeichert werden, ist die x-Achse der
+    Sample-Index (das Fenster ist mit fester Frequenz resampled).
     """
-    if df.empty or 'time_rel_s' not in df.columns:
+    if df.empty:
         return
-        
-    plt.figure(figsize=(12, 9))
-    
+
+    x = range(len(df))
+    plt.figure(figsize=(12, 6))
+
     # --- Accelerometer Plot ---
-    plt.subplot(3, 1, 1)
+    plt.subplot(2, 1, 1)
     if 'IMU1_accX' in df.columns:
-        plt.plot(df['time_rel_s'], df['IMU1_accX'], label='IMU1 AccX', color='r')
-        plt.plot(df['time_rel_s'], df['IMU1_accY'], label='IMU1 AccY', color='g')
-        plt.plot(df['time_rel_s'], df['IMU1_accZ'], label='IMU1 AccZ', color='b')
+        plt.plot(x, df['IMU1_accX'], label='IMU1 AccX', color='r')
+        plt.plot(x, df['IMU1_accY'], label='IMU1 AccY', color='g')
+        plt.plot(x, df['IMU1_accZ'], label='IMU1 AccZ', color='b')
     if 'IMU2_accX' in df.columns:
-        plt.plot(df['time_rel_s'], df['IMU2_accX'], label='IMU2 AccX', linestyle='--', color='r')
-        plt.plot(df['time_rel_s'], df['IMU2_accY'], label='IMU2 AccY', linestyle='--', color='g')
-        plt.plot(df['time_rel_s'], df['IMU2_accZ'], label='IMU2 AccZ', linestyle='--', color='b')
+        plt.plot(x, df['IMU2_accX'], label='IMU2 AccX', linestyle='--', color='r')
+        plt.plot(x, df['IMU2_accY'], label='IMU2 AccY', linestyle='--', color='g')
+        plt.plot(x, df['IMU2_accZ'], label='IMU2 AccZ', linestyle='--', color='b')
     plt.title('Accelerometer Data')
-    plt.xlabel('Time (s)')
+    plt.xlabel('Sample')
     plt.ylabel('g')
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(True)
 
     # --- Gyroscope Plot ---
-    plt.subplot(3, 1, 2)
+    plt.subplot(2, 1, 2)
     if 'IMU1_gyrX' in df.columns:
-        plt.plot(df['time_rel_s'], df['IMU1_gyrX'], label='IMU1 GyrX', color='r')
-        plt.plot(df['time_rel_s'], df['IMU1_gyrY'], label='IMU1 GyrY', color='g')
-        plt.plot(df['time_rel_s'], df['IMU1_gyrZ'], label='IMU1 GyrZ', color='b')
+        plt.plot(x, df['IMU1_gyrX'], label='IMU1 GyrX', color='r')
+        plt.plot(x, df['IMU1_gyrY'], label='IMU1 GyrY', color='g')
+        plt.plot(x, df['IMU1_gyrZ'], label='IMU1 GyrZ', color='b')
     if 'IMU2_gyrX' in df.columns:
-        plt.plot(df['time_rel_s'], df['IMU2_gyrX'], label='IMU2 GyrX', linestyle='--', color='r')
-        plt.plot(df['time_rel_s'], df['IMU2_gyrY'], label='IMU2 GyrY', linestyle='--', color='g')
-        plt.plot(df['time_rel_s'], df['IMU2_gyrZ'], label='IMU2 GyrZ', linestyle='--', color='b')
+        plt.plot(x, df['IMU2_gyrX'], label='IMU2 GyrX', linestyle='--', color='r')
+        plt.plot(x, df['IMU2_gyrY'], label='IMU2 GyrY', linestyle='--', color='g')
+        plt.plot(x, df['IMU2_gyrZ'], label='IMU2 GyrZ', linestyle='--', color='b')
     plt.title('Gyroscope Data')
-    plt.xlabel('Time (s)')
+    plt.xlabel('Sample')
     plt.ylabel('dps')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.grid(True)
-
-    # --- Roll & Pitch Plot ---
-    plt.subplot(3, 1, 3)
-    if 'IMU1_roll_kf' in df.columns:
-        plt.plot(df['time_rel_s'], df['IMU1_roll_kf'], label='IMU1 Roll (KF)', color='c')
-        plt.plot(df['time_rel_s'], df['IMU1_pitch_kf'], label='IMU1 Pitch (KF)', color='m')
-        plt.plot(df['time_rel_s'], df['IMU1_roll'], label='IMU1 Roll', color='y')
-        plt.plot(df['time_rel_s'], df['IMU1_pitch'], label='IMU1 Pitch', color='k')
-    if 'IMU2_roll_kf' in df.columns:
-        plt.plot(df['time_rel_s'], df['IMU2_roll_kf'], label='IMU2 Roll (KF)', linestyle='--', color='c')
-        plt.plot(df['time_rel_s'], df['IMU2_pitch_kf'], label='IMU2 Pitch (KF)', linestyle='--', color='m')
-        plt.plot(df['time_rel_s'], df['IMU2_roll'], label='IMU2 Roll', linestyle='--', color='y')
-        plt.plot(df['time_rel_s'], df['IMU2_pitch'], label='IMU2 Pitch', linestyle='--', color='k')
-    plt.title('Orientation (Roll & Pitch - Kalman Filtered)')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Degrees')
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(True)
 

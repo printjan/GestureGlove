@@ -1,25 +1,8 @@
 import serial
 import time
 import threading
-import math
 import queue
 from queue import Queue
-
-class SimpleKalmanFilter:
-    def __init__(self, err_measure, err_estimate, q):
-        self.err_measure = err_measure
-        self.err_estimate = err_estimate
-        self.q = q
-        self.current_estimate = 0.0
-        self.last_estimate = 0.0
-        self.kalman_gain = 0.0
-
-    def update_estimate(self, mea):
-        self.kalman_gain = self.err_estimate / (self.err_estimate + self.err_measure)
-        self.current_estimate = self.last_estimate + self.kalman_gain * (mea - self.last_estimate)
-        self.err_estimate = (1.0 - self.kalman_gain) * self.err_estimate + abs(self.last_estimate - self.current_estimate) * self.q
-        self.last_estimate = self.current_estimate
-        return self.current_estimate
 
 class IMUDataInput:
     def __init__(self, port, baudrate=115200, name="IMU"):
@@ -30,11 +13,7 @@ class IMUDataInput:
         self.data_queue = Queue()
         self.running = False
         self.thread = None
-        
-        # Kalman Filter für Roll und Pitch
-        self.kf_roll = SimpleKalmanFilter(0.1, 0.1, 0.05)
-        self.kf_pitch = SimpleKalmanFilter(0.1, 0.1, 0.05)
-        
+
     def connect(self):
         try:
             self.ser = serial.Serial(self.port, self.baudrate, timeout=0.1)
@@ -79,23 +58,15 @@ class IMUDataInput:
                     try:
                         esp_us = int(data[0])
                         ax, ay, az, gx, gy, gz = map(float, data[1:])
-                        
-                        # Roll und Pitch berechnen
-                        roll = math.atan2(ay, az) * 180.0 / math.pi
-                        pitch = math.atan2(-ax, math.sqrt(ay * ay + az * az)) * 180.0 / math.pi
-                        
-                        # Mit Kalman Filter glätten
-                        roll_kf = self.kf_roll.update_estimate(roll)
-                        pitch_kf = self.kf_pitch.update_estimate(pitch)
-                        
+
+                        # Nur rohe Sensorwerte speichern. Die Timestamps werden
+                        # ausschließlich zur Synchronisation beider IMUs genutzt.
                         packed_data = {
                             'sensor_id': self.name,
                             'pc_timestamp_us': int(pc_timestamp * 1e6),
                             'esp_timestamp_us': esp_us,
                             'accX': ax, 'accY': ay, 'accZ': az,
                             'gyrX': gx, 'gyrY': gy, 'gyrZ': gz,
-                            'roll': roll, 'pitch': pitch,
-                            'roll_kf': roll_kf, 'pitch_kf': pitch_kf
                         }
                         self.data_queue.put(packed_data)
                     except ValueError:
