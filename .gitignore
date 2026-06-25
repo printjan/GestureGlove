@@ -5,3 +5,5 @@ __pycache__/
 config/devices.py
 config/devices.yml
 !config/devices.example.yml
+
+src/data_fusion_project.egg-info/
