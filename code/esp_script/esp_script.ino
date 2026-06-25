@@ -51,5 +51,5 @@ void loop()
   Serial.print(",");
   Serial.println(gyrZ);
 
-  delay(10); // 100 Hz update rate
+  delay(5); // 100 Hz update rate
 }

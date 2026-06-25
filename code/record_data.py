@@ -1,7 +1,6 @@
 import time
 import os
 import threading
-import queue
 import pandas as pd
 import matplotlib.pyplot as plt
 from input_data import IMUDataInput
@@ -104,25 +103,25 @@ def process_and_save_data():
     # Zusammenführen und Synchronisieren über unsere neue Pipeline
     merged_df, valid_windows = process_stream(df1, df2, window_sz=TARGET_SAMPLES, max_diff_us=5000, freq_hz=100)
     print(f"{len(valid_windows)} valide Fenster extrahiert (Abweichung < 5ms).")
-    
-    # Prefix hinzufügen, um die Werte beider Sensoren unterscheiden zu können
-    # Wurde in process_stream bereits erledigt, z.B. IMU1_accX
-    
-    # Sync-Timestamp relativ auf 0 setzen (macht den Plot lesbarer) für time_rel_s
-    if not merged_df.empty:
-        start_time = merged_df['sync_time_us'].iloc[0]
-        merged_df['time_rel_s'] = (merged_df['sync_time_us'] - start_time) / 1e6
-        
-    # Ordner für Datensätze erstellen
+
+    if not valid_windows:
+        print("Kein valides Fenster — Aufnahme verworfen.")
+        return
+
+    # Erstes valides Fenster speichern (exakt TARGET_SAMPLES Zeilen)
+    save_df = valid_windows[0].copy()
+    start_time = save_df['sync_time_us'].iloc[0]
+    save_df['time_rel_s'] = (save_df['sync_time_us'] - start_time) / 1e6
+
     gesture_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "datasets", GESTURE_LABELS[current_gesture]))
     os.makedirs(gesture_dir, exist_ok=True)
     filename = os.path.join(gesture_dir, f"gesture_record_{int(time.time())}.csv")
-    
-    merged_df.to_csv(filename, index=False)
+
+    save_df.to_csv(filename, index=False)
     print(f"Datensatz gespeichert unter: {filename}\n")
-    
+
     # Plot anzeigen
-    plot_data(merged_df)
+    plot_data(save_df)
 
 
 def plot_data(df):
