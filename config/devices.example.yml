@@ -1,0 +1,7 @@
+imu1:
+  role: wrist
+  serial_number: "REPLACE_WITH_BOARD_SERIAL"
+
+imu2:
+  role: index
+  serial_number: "REPLACE_WITH_BOARD_SERIAL"
