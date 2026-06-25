@@ -54,7 +54,14 @@
 
 ## Guestures
 
-**Very important:** Discrete Movement (Recognizable Start and Stop of the movement with a stationary moment before and after to differentiate the geusture from natural movement)!
+### Very important:
+
+- Discrete Movement (Recognizable Start and Stop of the movement with a stationary moment before and after to differentiate the geusture from natural movement)!
+- Calibration: 
+  - At the beginning of each recording:
+    - 3 seconds still pose:
+      - wrist mounted normally
+      - index finger extended or relaxed in defined pose
 
 ### Arm gestures
 
@@ -120,11 +127,47 @@ data_fusion_project/
 
 ## Data set structure
 
-Column structure of `<timestamp>.csv` files:
+Column structure of `<id>.csv` or `calibration.csv` files (they only contain raw data):
 
 ```csv
 IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,IMU2_accZ,IMU2_gyrX,IMU2_gyrY,IMU2_gyrZ
 ```
+
+
+---
+
+## Data Processing Pipeline
+
+Extracts trainings data and OPTIONALLY preprocesses it providing different preprocessing options or OPTIONALLY calculates features:
+
+- Calibration: 
+  - At the beginning of each recording:
+    - 3 seconds still pose:
+      - wrist mounted normally
+      - index finger extended or relaxed in defined pose
+  - Estimate:
+    - accelerometer bias / gravity direction
+    - gyroscope zero bias
+    - axis orientation sanity check
+  - Normalize:
+    - `gyro_corrected = gyro_raw - gyro_bias`
+    - `acc_norm = acc_raw / g`
+
+- Filtering:
+  - Low Pass filtering (for noise reduction)
+  - High pass filtering
+  - Gravity Removal
+
+- Features:
+  - `index_acc - wrist_acc`
+  - `index_gyro - wrist_gyro`
+  - `cross-correlation features`
+
+
+---
+
+
+## CNN Experiments
 
 
 ---
@@ -143,3 +186,17 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
 - Alle Medien (also auch Präsi Videos) auf Git ablegen.
 - Mündlich darauf vorbereiten, Fragen zum Projekt zu beantworten (auch kritische).
 - Abgabe: 1. Juli 23:59. Kein Commit mehr danach.
+
+
+
+---
+
+
+## `data_fusion_project` python module
+
+Codebase: `src/data_fusion_project/`
+
+Capabilities:
+- path resolution
+- logging
+- cli ui
