@@ -38,6 +38,15 @@ import re
 import shutil
 import sys
 import threading
+import platform
+import time
+
+if platform.system() == 'Windows':
+    import msvcrt
+else:
+    import select
+    import termios
+    import tty
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -1570,6 +1579,67 @@ def big_text(
 # ======================================================================================================================
 
 
+class NonBlockingInput:
+    """Context manager to enable non-blocking, non-canonical keyboard reads (cbreak)."""
+    def __init__(self):
+        self.old_settings = None
+
+    def __enter__(self):
+        if platform.system() != 'Windows' and sys.stdin.isatty():
+            try:
+                self.fd = sys.stdin.fileno()
+                self.old_settings = termios.tcgetattr(self.fd)
+                tty.setcbreak(self.fd)
+            except Exception:
+                self.old_settings = None
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.old_settings is not None:
+            try:
+                termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
+            except Exception:
+                pass
+
+
+def get_key_nonblocking() -> str | None:
+    """Reads a single keypress from standard input without blocking."""
+    if platform.system() == 'Windows':
+        if msvcrt.kbhit():
+            try:
+                ch = msvcrt.getch()
+                if isinstance(ch, bytes):
+                    return ch.decode('utf-8', errors='ignore')
+                return ch
+            except Exception:
+                return None
+        return None
+    else:
+        try:
+            if sys.stdin.isatty() and select.select([sys.stdin], [], [], 0)[0]:
+                return sys.stdin.read(1)
+        except Exception:
+            pass
+        return None
+
+
+def flush_stdin() -> None:
+    """Clears standard input buffer to discard any unhandled keypresses."""
+    if platform.system() == 'Windows':
+        while msvcrt.kbhit():
+            try:
+                msvcrt.getch()
+            except Exception:
+                break
+    else:
+        try:
+            if sys.stdin.isatty():
+                while select.select([sys.stdin], [], [], 0)[0]:
+                    sys.stdin.read(1)
+        except Exception:
+            pass
+
+
 class CliUI:
     """High-level CLI UI manager.
 
@@ -1752,6 +1822,98 @@ class CliUI:
     def big(self, text: str, *, scale: int = 2, style: CliStyle | None = Style.TITLE) -> None:
         for line in big_text(text, scale=scale, style=style):
             self._write(line)
+
+    def non_blocking_input(self) -> NonBlockingInput:
+        """Returns a context manager for non-blocking input."""
+        return NonBlockingInput()
+
+    def get_key(self) -> str | None:
+        """Reads a keypress from standard input without blocking."""
+        return get_key_nonblocking()
+
+    def flush_input(self) -> None:
+        """Flushes standard input."""
+        flush_stdin()
+
+    def progress_bar(
+        self,
+        duration_s: float,
+        label: str = "",
+        color: CliStyle | None = None,
+        stop_session: threading.Event | None = None,
+        bar_width: int = 40,
+    ) -> str:
+        """Displays a progress bar over duration_s, polling for non-blocking key presses.
+        
+        Returns:
+          - 'completed': if the duration finished.
+          - 'space': if spacebar was pressed.
+          - 'enter': if enter was pressed.
+          - 'aborted': if stop_session is set.
+        """
+        steps = 60
+        sleep_time = duration_s / steps
+        flush_stdin()
+
+        for i in range(steps + 1):
+            filled = int(bar_width * i / steps)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            elapsed = duration_s * i / steps
+            
+            bar_text = f"\r  {label}[{bar}] {elapsed:.1f}s / {duration_s:.1f}s  "
+            if color:
+                bar_text = style_text(bar_text, color)
+                
+            self.stream.write(bar_text)
+            try:
+                self.stream.flush()
+            except Exception:
+                pass
+            
+            if i < steps:
+                # Poll in smaller sub-steps
+                poll_steps = 10
+                poll_sleep = sleep_time / poll_steps
+                for _ in range(poll_steps):
+                    if stop_session is not None and stop_session.is_set():
+                        self._write("")
+                        return "aborted"
+                    
+                    key = get_key_nonblocking()
+                    if key == " ":
+                        self._write("")
+                        return "space"
+                    elif key in ("\r", "\n"):
+                        self._write("")
+                        return "enter"
+                    
+                    time.sleep(poll_sleep)
+                    
+        self._write("")
+        return "completed"
+
+    def wait_for_enter(self, prompt: str) -> None:
+        """Prompts the user and waits until the Enter key is pressed."""
+        self.stream.write(prompt)
+        try:
+            self.stream.flush()
+        except Exception:
+            pass
+            
+        if platform.system() != "Windows" and not sys.stdin.isatty():
+            try:
+                sys.stdin.readline()
+            except Exception:
+                pass
+            return
+
+        flush_stdin()
+        while True:
+            key = get_key_nonblocking()
+            if key in ("\r", "\n"):
+                break
+            time.sleep(0.05)
+        self._write("")
 
 
 # Global UI instance

@@ -1,14 +1,9 @@
 import pandas as pd
 import numpy as np
-import logging
 from dataclasses import dataclass, field
+from data_fusion_project.core.logger_setup import get_logger
 
-logger = logging.getLogger("IMU_Sync")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(ch)
+logger = get_logger("IMU_Sync")
 
 _META_COLS = frozenset({'sensor_id', 'pc_timestamp_us', 'esp_timestamp_us', 'sync_time_us'})
 

@@ -7,6 +7,7 @@ import yaml
 from serial.tools import list_ports
 
 from data_fusion_project.core.paths import DEVICES_CONFIG_FILE
+from data_fusion_project.core.cli_ui import ui, Style
 
 
 def _normalize_identifier(value: str | None) -> str:
@@ -73,13 +74,20 @@ def available_serial_ports() -> list[dict]:
 
 
 def print_available_serial_ports() -> None:
-    print("\nAvailable serial ports:")
-    for port in available_serial_ports():
-        print(f"  device:        {port['device']}")
-        print(f"  description:   {port['description']}")
-        print(f"  serial_number: {port['serial_number']}")
-        print(f"  location:      {port['location']}")
-        print(f"  hwid:          {port['hwid']}")
+    ports = available_serial_ports()
+    if not ports:
+        ui.warning("Keine verfügbaren seriellen Ports gefunden.")
+        return
+
+    ui.hr(title="Verfügbare serielle Ports")
+    for port in ports:
+        ui.kv([
+            ("device", port['device']),
+            ("description", port['description']),
+            ("serial_number", port['serial_number'] or "N/A"),
+            ("location", port['location'] or "N/A"),
+            ("hwid", port['hwid']),
+        ])
         print()
 
 
