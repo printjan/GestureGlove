@@ -1,3 +1,57 @@
+# code/record_data.py
+"""
+Data recording script to stream, synchronize, and save IMU datasets for gestures.
+
+Input:
+data/
+└── <gesture_name>/
+    └── <session_name>/
+        └── #####.csv
+
+Output:
+data/
+└── <gesture_name>/
+    └── <session_name>/
+        ├── calibration.csv
+        ├── calibration.png
+        ├── #####.csv
+        ├── #####.png
+        ├── energy_distribution.csv
+        └── energy_distribution.png
+
+**Columns (#####.csv / calibration.csv):**
+| Column name | Description |
+|-------------|-------------|
+| IMU1_accX   | Accelerometer X-axis reading from IMU1 (Wrist) in g |
+| IMU1_accY   | Accelerometer Y-axis reading from IMU1 (Wrist) in g |
+| IMU1_accZ   | Accelerometer Z-axis reading from IMU1 (Wrist) in g |
+| IMU1_gyrX   | Gyroscope X-axis reading from IMU1 (Wrist) in dps |
+| IMU1_gyrY   | Gyroscope Y-axis reading from IMU1 (Wrist) in dps |
+| IMU1_gyrZ   | Gyroscope Z-axis reading from IMU1 (Wrist) in dps |
+| IMU2_accX   | Accelerometer X-axis reading from IMU2 (Finger) in g |
+| IMU2_accY   | Accelerometer Y-axis reading from IMU2 (Finger) in g |
+| IMU2_accZ   | Accelerometer Z-axis reading from IMU2 (Finger) in g |
+| IMU2_gyrX   | Gyroscope X-axis reading from IMU2 (Finger) in dps |
+| IMU2_gyrY   | Gyroscope Y-axis reading from IMU2 (Finger) in dps |
+| IMU2_gyrZ   | Gyroscope Z-axis reading from IMU2 (Finger) in dps |
+
+**Columns (energy_distribution.csv):**
+| Column name | Description |
+|-------------|-------------|
+| sample_index| Sample index inside the 1.5s window (0 to 149) |
+| IMU1_acc_mean| Mean accelerometer magnitude of IMU1 across all recorded samples |
+| IMU1_acc_std | Standard deviation of accelerometer magnitude of IMU1 |
+| IMU1_gyr_mean| Mean gyroscope magnitude of IMU1 across all recorded samples |
+| IMU1_gyr_std | Standard deviation of gyroscope magnitude of IMU1 |
+| IMU2_acc_mean| Mean accelerometer magnitude of IMU2 across all recorded samples |
+| IMU2_acc_std | Standard deviation of accelerometer magnitude of IMU2 |
+| IMU2_gyr_mean| Mean gyroscope magnitude of IMU2 across all recorded samples |
+| IMU2_gyr_std | Standard deviation of gyroscope magnitude of IMU2 |
+"""
+
+# ======================================================================================================================
+# Imports
+# ======================================================================================================================
 import time
 import os
 import random
@@ -14,21 +68,27 @@ from input_data import IMUDataInput
 from sync import process_stream
 import device_resolution
 from data_fusion_project.core.paths import DATA_DIR, GESTURES, get_calibration_file, get_next_recording_file
-from data_fusion_project.core.logger_setup import get_logger
+from data_fusion_project.core.logger_setup import get_logger, set_log_level
 from data_fusion_project.core.cli_ui import ui, Style
 
 logger = get_logger("IMU_Record")
+set_log_level("WARNING")
 
-# --- Configuration ---
+# ======================================================================================================================
+# Configuration & State
+# ======================================================================================================================
 BAUDRATE = 115200
 RECORD_DURATION_S = 1.5
 TARGET_SAMPLES = 150  # = RECORD_DURATION_S * 100 Hz
-STORE_PNGS = True
-plot_movement_distribution = True
+PLOT_EVERY_SAMPLE = False
+PLOT_MOVEMENT_DISTRIBUTION = True
+MAX_DEVIATION_OF_TARGET_SAMPLE_RATE = 30  # Max permitted sample count deviation percentage (20%)
+
+PRE_BUFFER_S = 0.05
+POST_BUFFER_S = 0.05
 
 # Geste, die kontinuierlich (überlappend) statt sample-weise aufgenommen wird.
 NONE_GESTURE_NAME = "none"
-
 # Überlappung aufeinanderfolgender 'none'-Fenster (0 = keine, 0.5 = 50 %).
 OVERLAP_RATIO = 0.5
 
@@ -54,50 +114,92 @@ received_counts = {'IMU1': 0, 'IMU2': 0}
 current_gesture = 0
 
 
-
+# ======================================================================================================================
+# Recording Helpers
+# ======================================================================================================================
 def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     """
-    Nimmt Daten für ein einzelnes File (z.B. Calibration oder ein einzelnes Sample) auf.
+    Records a single data sample for a given duration.
+    :param: imu1 (IMUDataInput): first IMU reader.
+    :param: imu2 (IMUDataInput): second IMU reader.
+    :param: duration_s (float): duration of recording in seconds.
+    :param: target_samples (int): expected number of samples.
+    :param: filename (str | Path): destination path for CSV file.
+    :return: success (bool): True if sample recorded successfully.
+    :raises: RuntimeError: if sensor threads stopped, data missing, or sync failed.
     """
-    # Atomar leeren
-    with _buffer_lock:
-        imu1.get_data()
-        imu2.get_data()
-        imu1_data_buffer.clear()
-        imu2_data_buffer.clear()
-        received_counts['IMU1'] = 0
-        received_counts['IMU2'] = 0
+    if not imu1.running or not imu2.running:
+        logger.error("Sensor reading thread stopped prior to single recording.")
+        raise RuntimeError("Sensor reading thread stopped prior to single recording.")
+
+    # Clear reader queues before starting
+    imu1.get_data()
+    imu2.get_data()
 
     recording.set()
+
+    # Pre-buffer recording silently
+    time.sleep(PRE_BUFFER_S)
+
     completed_status = ui.progress_bar(duration_s, label="Aufnahme: ", color=Style.SUCCESS, stop_session=stop_session)
+
+    # Post-buffer recording silently
+    time.sleep(POST_BUFFER_S)
+
     recording.clear()
 
     if completed_status != "completed":
-        ui.warning("Aufnahme manuell abgebrochen.")
+        logger.warning("Recording was manually cancelled.")
         return False
 
-    with _buffer_lock:
-        snapshot1 = list(imu1_data_buffer)
-        snapshot2 = list(imu2_data_buffer)
+    if not imu1.running or not imu2.running:
+        logger.error("Sensor reading thread stopped during single recording.")
+        raise RuntimeError("Sensor reading thread stopped during single recording.")
+
+    snapshot1 = imu1.get_data()
+    snapshot2 = imu2.get_data()
 
     if not snapshot1 or not snapshot2:
-        ui.error("Keine Sensordaten empfangen.")
-        return False
+        logger.error("No sensor data received from one or both IMUs.")
+        raise RuntimeError("No sensor data received.")
+
+    actual_duration = duration_s + PRE_BUFFER_S + POST_BUFFER_S
+    recorded_target_samples = int(actual_duration * 100)
+    allowed_deviation = int(recorded_target_samples * (MAX_DEVIATION_OF_TARGET_SAMPLE_RATE / 100.0))
+    min_samples = recorded_target_samples - allowed_deviation
+    max_samples = recorded_target_samples + allowed_deviation
+
+    if len(snapshot1) < min_samples or len(snapshot1) > max_samples:
+        logger.error(f"IMU1 sample count {len(snapshot1)} deviated from target {recorded_target_samples} (allowed: {min_samples}-{max_samples}).")
+        raise RuntimeError(f"IMU1 sample count deviation too high: {len(snapshot1)}.")
+
+    if len(snapshot2) < min_samples or len(snapshot2) > max_samples:
+        logger.error(f"IMU2 sample count {len(snapshot2)} deviated from target {recorded_target_samples} (allowed: {min_samples}-{max_samples}).")
+        raise RuntimeError(f"IMU2 sample count deviation too high: {len(snapshot2)}.")
 
     # Convert to DataFrames
     df1 = pd.DataFrame(snapshot1)
     df2 = pd.DataFrame(snapshot2)
 
     with ui.spinner("Verarbeite und synchronisiere Sensordaten..."):
-        _merged, valid_windows = process_stream(df1, df2, window_sz=target_samples, max_diff_us=MAX_SYNC_DIFF_US, freq_hz=100)
+        _merged, valid_windows = process_stream(df1, df2, window_sz=target_samples, max_diff_us=MAX_SYNC_DIFF_US, freq_hz=100, center_gesture=True)
 
     if not valid_windows:
-        ui.error("Synchronisation fehlgeschlagen (Abweichung zu hoch). Aufnahme verworfen.")
-        return False
+        logger.error("Synchronization failed (deviation too high).")
+        raise RuntimeError("Synchronization failed.")
+
+    # Update global counts for metrics
+    global received_counts
+    received_counts['IMU1'] += len(snapshot1)
+    received_counts['IMU2'] += len(snapshot2)
 
     # Speichern des ersten validen Fensters
     save_df = valid_windows[0].copy()
     save_df = save_df.drop(columns=['sync_time_us'], errors='ignore')
+
+    if len(save_df) != target_samples:
+        logger.error(f"Sample contains invalid row count: {len(save_df)} (expected exactly {target_samples}).")
+        raise RuntimeError(f"Invalid row count: {len(save_df)}.")
 
     filename = Path(filename)
     filename.parent.mkdir(parents=True, exist_ok=True)
@@ -105,18 +207,21 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     ui.success(f"Datei erfolgreich gespeichert: {filename.name}")
 
     # Plot speichern
-    if STORE_PNGS:
+    if PLOT_EVERY_SAMPLE:
         plot_data(save_df, save_path=filename.with_suffix('.png'))
     return True
 
 
+# ======================================================================================================================
+# UI & State Helpers
+# ======================================================================================================================
 def handle_pause(last_csv, last_png, paused_during_recording):
     """
-    Handles the pause state when Space is pressed.
-    Returns:
-      - 'resume': if Space is pressed to resume recording.
-      - 'stop': if Enter is pressed to stop the recording session.
-      - 'deleted': if 'd' is pressed to delete the last sample.
+    Handles keyboard choices during the pause state.
+    :param: last_csv (Path | None): path of last saved csv.
+    :param: last_png (Path | None): path of last saved png.
+    :param: paused_during_recording (bool): flag if paused mid-run.
+    :return: action (str): selected action ('resume', 'stop', or 'deleted').
     """
     ui.info("\n=== AUFNAHME PAUSIERT ===")
     if paused_during_recording:
@@ -156,8 +261,10 @@ def handle_pause(last_csv, last_png, paused_during_recording):
 
 def handle_stop(last_csv, last_png):
     """
-    Handles the stop state when Enter is pressed.
-    Offers the user a 3-second window to press 'd' to delete the last saved sample.
+    Offers the user a 3-second countdown to delete the last saved sample.
+    :param: last_csv (Path | None): path of last saved csv.
+    :param: last_png (Path | None): path of last saved png.
+    :return: None:
     """
     ui.info("\n=== AUFNAHME BEENDET ===")
     if last_csv and last_csv.exists():
@@ -198,6 +305,13 @@ def handle_stop(last_csv, last_png):
 
 
 def input_thread(imu1, imu2, session_name):
+    """
+    Controls user interaction menu thread for choosing gestures and starting loops.
+    :param: imu1 (IMUDataInput): first IMU reader.
+    :param: imu2 (IMUDataInput): second IMU reader.
+    :param: session_name (str): current session directory name.
+    :return: None:
+    """
     global current_gesture
 
     ui.banner("Aufnahme-Controller", subtitle=f"Sitzung: {session_name}")
@@ -247,7 +361,12 @@ def input_thread(imu1, imu2, session_name):
 
 
 def _trim_before(buf, cutoff_us):
-    """Entfernt alle Pakete vor cutoff_us."""
+    """
+    Trims packets from the buffer that are older than the cutoff timestamp.
+    :param: buf (list): packet list.
+    :param: cutoff_us (int): cutoff timestamp in microseconds.
+    :return: None:
+    """
     i = 0
     while i < len(buf) and buf[i]['pc_timestamp_us'] < cutoff_us:
         i += 1
@@ -255,23 +374,30 @@ def _trim_before(buf, cutoff_us):
         del buf[:i]
 
 
+# ======================================================================================================================
+# Recording Loops
+# ======================================================================================================================
 def record_continuous(imu1, imu2, session_name):
     """
-    Nimmt die Geste 'none' kontinuierlich mit überlappenden Fenstern auf.
+    Records the 'none' gesture continuously with overlapping windows.
+    :param: imu1 (IMUDataInput): first IMU reader.
+    :param: imu2 (IMUDataInput): second IMU reader.
+    :param: session_name (str): current session directory name.
+    :return: None:
+    :raises: RuntimeError: if sensor reading fails during the session.
     """
     gesture_name = GESTURES[current_gesture]
     window_us = int(RECORD_DURATION_S * 1e6)
     advance_us = max(1, int(round(RECORD_DURATION_S * (1 - OVERLAP_RATIO) * 1e6)))
     poll_s = 0.05
 
-    with _buffer_lock:
-        imu1.get_data()
-        imu2.get_data()
-        imu1_data_buffer.clear()
-        imu2_data_buffer.clear()
-        received_counts['IMU1'] = 0
-        received_counts['IMU2'] = 0
-    recording.set()
+    # Clear reader queues and start with fresh local buffers
+    imu1.get_data()
+    imu2.get_data()
+    local_buf1 = []
+    local_buf2 = []
+    local_cnt1 = 0
+    local_cnt2 = 0
 
     logger.info("KONTINUIERLICHE AUFNAHME '%s' (Fenster %ss, Überlappung %s%%)",
                 gesture_name, RECORD_DURATION_S, OVERLAP_RATIO*100)
@@ -282,26 +408,35 @@ def record_continuous(imu1, imu2, session_name):
     
     with ui.non_blocking_input():
         while not stop_session.is_set():
+            if not imu1.running or not imu2.running:
+                logger.error("IMU thread stopped during continuous recording. Aborting.")
+                raise RuntimeError("IMU thread stopped during continuous recording.")
+
             key = ui.get_key()
             if key in (" ", "\r", "\n"):
                 break
                 
             time.sleep(poll_s)
 
-            with _buffer_lock:
-                snap1 = list(imu1_data_buffer)
-                snap2 = list(imu2_data_buffer)
-            if not snap1 or not snap2:
+            # Retrieve new samples and append to local buffers
+            data1 = imu1.get_data()
+            data2 = imu2.get_data()
+            local_buf1.extend(data1)
+            local_buf2.extend(data2)
+            local_cnt1 += len(data1)
+            local_cnt2 += len(data2)
+
+            if not local_buf1 or not local_buf2:
                 continue
 
             if next_start_us is None:
-                next_start_us = max(snap1[0]['pc_timestamp_us'], snap2[0]['pc_timestamp_us'])
+                next_start_us = max(local_buf1[0]['pc_timestamp_us'], local_buf2[0]['pc_timestamp_us'])
 
-            latest_us = min(snap1[-1]['pc_timestamp_us'], snap2[-1]['pc_timestamp_us'])
+            latest_us = min(local_buf1[-1]['pc_timestamp_us'], local_buf2[-1]['pc_timestamp_us'])
             if latest_us - next_start_us < window_us:
                 continue
 
-            window = _extract_window(snap1, snap2)
+            window = _extract_window(local_buf1, local_buf2)
             if window is not None:
                 rec_file = get_next_recording_file(gesture_name, session_name)
                 _save_window(window, rec_file, verbose=False, plot=False)
@@ -309,12 +444,13 @@ def record_continuous(imu1, imu2, session_name):
                 print(f"\r  Überlappende 'none'-Fenster gespeichert: {saved}", end="", flush=True)
 
             next_start_us += advance_us
-            with _buffer_lock:
-                _trim_before(imu1_data_buffer, next_start_us)
-                _trim_before(imu2_data_buffer, next_start_us)
+            _trim_before(local_buf1, next_start_us)
+            _trim_before(local_buf2, next_start_us)
 
     print()
-    recording.clear()
+    global received_counts
+    received_counts['IMU1'] += local_cnt1
+    received_counts['IMU2'] += local_cnt2
     logger.info("Gespeichert: %d überlappende Fenster für '%s'", saved, gesture_name)
     _print_received_counts()
     _print_dataset_counts()
@@ -322,7 +458,12 @@ def record_continuous(imu1, imu2, session_name):
 
 def record_samples_loop(imu1, imu2, session_name):
     """
-    Nimmt wiederholt einzelne Gesten-Samples auf mit variabler Pause.
+    Loop for recording individual gesture samples with pause intervals.
+    :param: imu1 (IMUDataInput): first IMU reader.
+    :param: imu2 (IMUDataInput): second IMU reader.
+    :param: session_name (str): current session directory name.
+    :return: None:
+    :raises: RuntimeError: if sensor error or sample rate deviation is too high.
     """
     gesture_name = GESTURES[current_gesture]
     saved = 0
@@ -331,27 +472,31 @@ def record_samples_loop(imu1, imu2, session_name):
     last_saved_csv = None
     last_saved_png = None
     
-    with _buffer_lock:
-        received_counts['IMU1'] = 0
-        received_counts['IMU2'] = 0
-
     with ui.non_blocking_input():
         while not stop_session.is_set():
+            if not imu1.running or not imu2.running:
+                logger.error("IMU thread stopped during sample loop. Aborting.")
+                raise RuntimeError("IMU thread stopped during sample loop.")
+
             sample_idx += 1
             rec_file = get_next_recording_file(gesture_name, session_name)
 
             logger.info("Sample %d ('%s') — Starte Aufnahme...", sample_idx, gesture_name)
             
-            with _buffer_lock:
-                imu1.get_data()
-                imu2.get_data()
-                imu1_data_buffer.clear()
-                imu2_data_buffer.clear()
-                received_counts['IMU1'] = 0
-                received_counts['IMU2'] = 0
+            # Clear reader queues before starting
+            imu1.get_data()
+            imu2.get_data()
 
             recording.set()
+
+            # Pre-buffer recording silently
+            time.sleep(PRE_BUFFER_S)
+
             rec_status = ui.progress_bar(RECORD_DURATION_S, label="Aufnahme: ", color=Style.SUCCESS, stop_session=stop_session)
+
+            # Post-buffer recording silently
+            time.sleep(POST_BUFFER_S)
+
             recording.clear()
 
             if rec_status == "aborted":
@@ -375,28 +520,52 @@ def record_samples_loop(imu1, imu2, session_name):
                 handle_stop(last_saved_csv, last_saved_png)
                 break
 
-            with _buffer_lock:
-                snapshot1 = list(imu1_data_buffer)
-                snapshot2 = list(imu2_data_buffer)
+            if not imu1.running or not imu2.running:
+                logger.error("IMU thread stopped during sample loop. Aborting.")
+                raise RuntimeError("IMU thread stopped during sample loop.")
+
+            snapshot1 = imu1.get_data()
+            snapshot2 = imu2.get_data()
 
             if not snapshot1 or not snapshot2:
-                ui.error("Keine Sensordaten empfangen.")
-                sample_idx -= 1
-                continue
+                logger.error("No sensor data received from IMUs in sample loop. Aborting pipeline.")
+                raise RuntimeError("No sensor data received from IMUs in sample loop.")
+
+            actual_duration = RECORD_DURATION_S + PRE_BUFFER_S + POST_BUFFER_S
+            recorded_target_samples = int(actual_duration * 100)
+            allowed_deviation = int(recorded_target_samples * (MAX_DEVIATION_OF_TARGET_SAMPLE_RATE / 100.0))
+            min_samples = recorded_target_samples - allowed_deviation
+            max_samples = recorded_target_samples + allowed_deviation
+
+            if len(snapshot1) < min_samples or len(snapshot1) > max_samples:
+                logger.error(f"IMU1 sample count {len(snapshot1)} deviated from target {recorded_target_samples} (allowed: {min_samples}-{max_samples}).")
+                raise RuntimeError(f"IMU1 sample count deviation too high in loop: {len(snapshot1)}.")
+
+            if len(snapshot2) < min_samples or len(snapshot2) > max_samples:
+                logger.error(f"IMU2 sample count {len(snapshot2)} deviated from target {recorded_target_samples} (allowed: {min_samples}-{max_samples}).")
+                raise RuntimeError(f"IMU2 sample count deviation too high in loop: {len(snapshot2)}.")
 
             df1 = pd.DataFrame(snapshot1)
             df2 = pd.DataFrame(snapshot2)
 
             with ui.spinner("Verarbeite und synchronisiere Sensordaten..."):
-                _merged, valid_windows = process_stream(df1, df2, window_sz=TARGET_SAMPLES, max_diff_us=MAX_SYNC_DIFF_US, freq_hz=100)
+                _merged, valid_windows = process_stream(df1, df2, window_sz=TARGET_SAMPLES, max_diff_us=MAX_SYNC_DIFF_US, freq_hz=100, center_gesture=True)
 
             if not valid_windows:
-                ui.error("Synchronisation fehlgeschlagen (Abweichung zu hoch). Aufnahme verworfen.")
-                sample_idx -= 1
-                continue
+                logger.error("Synchronization failed for sample (deviation too high). Aborting pipeline.")
+                raise RuntimeError("Synchronization failed for sample.")
+
+            # Update global counts for metrics
+            global received_counts
+            received_counts['IMU1'] += len(snapshot1)
+            received_counts['IMU2'] += len(snapshot2)
 
             save_df = valid_windows[0].copy()
             save_df = save_df.drop(columns=['sync_time_us'], errors='ignore')
+
+            if len(save_df) != TARGET_SAMPLES:
+                logger.error(f"Sample contains invalid row count: {len(save_df)} (expected exactly {TARGET_SAMPLES}).")
+                raise RuntimeError(f"Invalid row count: {len(save_df)}.")
 
             rec_file = Path(rec_file)
             rec_file.parent.mkdir(parents=True, exist_ok=True)
@@ -404,9 +573,9 @@ def record_samples_loop(imu1, imu2, session_name):
             ui.success(f"Datei erfolgreich gespeichert: {rec_file.name}")
 
             last_saved_csv = rec_file
-            last_saved_png = rec_file.with_suffix('.png') if STORE_PNGS else None
+            last_saved_png = rec_file.with_suffix('.png') if PLOT_EVERY_SAMPLE else None
             
-            if STORE_PNGS:
+            if PLOT_EVERY_SAMPLE:
                 plot_data(save_df, save_path=last_saved_png)
                 
             saved += 1
@@ -456,6 +625,12 @@ def record_samples_loop(imu1, imu2, session_name):
 
 
 def _extract_window(snapshot1, snapshot2):
+    """
+    Synchronizes and extracts the first valid window from continuous buffer.
+    :param: snapshot1 (list): buffer data from IMU1.
+    :param: snapshot2 (list): buffer data from IMU2.
+    :return: window_df (DataFrame | None): first synchronized window or None.
+    """
     if len(snapshot1) == 0 and len(snapshot2) == 0:
         return None
 
@@ -471,20 +646,36 @@ def _extract_window(snapshot1, snapshot2):
 
 
 def _save_window(window_df, filename, verbose=True, plot=False):
+    """
+    Saves a synchronized data window as CSV and generates optional PNG plot.
+    :param: window_df (DataFrame): data to save.
+    :param: filename (str | Path): destination path.
+    :param: verbose (bool): whether to display UI success message.
+    :param: plot (bool): whether to plot the saved data.
+    :return: filename (Path): path to saved CSV.
+    """
     save_df = window_df.copy()
     save_df = save_df.drop(columns=['sync_time_us'], errors='ignore')
+
+    if len(save_df) != TARGET_SAMPLES:
+        logger.error(f"Sample contains invalid row count: {len(save_df)} (expected exactly {TARGET_SAMPLES}).")
+        raise RuntimeError(f"Invalid row count: {len(save_df)}.")
 
     filename = Path(filename)
     filename.parent.mkdir(parents=True, exist_ok=True)
     save_df.to_csv(filename, index=False)
     if verbose:
         ui.success(f"Datensatz gespeichert unter: {filename.name}")
-    if plot and STORE_PNGS:
+    if plot and PLOT_EVERY_SAMPLE:
         plot_data(save_df, save_path=filename.with_suffix('.png'))
     return filename
 
 
 def _print_received_counts():
+    """
+    Logs the total packet count received from both sensors in the session.
+    :return: None:
+    """
     with _buffer_lock:
         n1 = received_counts['IMU1']
         n2 = received_counts['IMU2']
@@ -492,6 +683,10 @@ def _print_received_counts():
 
 
 def _print_dataset_counts():
+    """
+    Prints to UI the number of saved samples per gesture.
+    :return: None:
+    """
     ui.hr(title="Gespeicherte Datensätze pro Geste")
     total = 0
     for label in GESTURES:
@@ -506,12 +701,17 @@ def _print_dataset_counts():
     logger.info("Gesamtanzahl valider Datensätze: %d", total)
 
 
+# ======================================================================================================================
+# Analysis & Plotting
+# ======================================================================================================================
 def save_and_plot_energy_distribution(gesture_name, session_name):
     """
-    Berechnet die Verteilung der Bewegungsenergie über alle aufgenommenen Samples
-    in der aktuellen Session, speichert diese als CSV und erzeugt einen Plot.
+    Computes statistical motion energy, saves it as CSV, and plots PNG.
+    :param: gesture_name (str): name of gesture.
+    :param: session_name (str): current session directory name.
+    :return: None:
     """
-    if not plot_movement_distribution:
+    if not PLOT_MOVEMENT_DISTRIBUTION:
         return
 
     from data_fusion_project.core.paths import get_session_dir
@@ -632,7 +832,10 @@ def save_and_plot_energy_distribution(gesture_name, session_name):
 
 def plot_data(df, save_path=None):
     """
-    Erzeugt einen Plot der aufgezeichneten Daten und speichert ihn als PNG.
+    Plots IMU accelerometer and gyroscope signals to a PNG file.
+    :param: df (DataFrame): data to plot.
+    :param: save_path (str | Path | None): save destination path.
+    :return: None:
     """
     if df.empty:
         return
@@ -681,14 +884,19 @@ def plot_data(df, save_path=None):
     plt.close(fig)
 
 
+# ======================================================================================================================
+# Main Execution
+# ======================================================================================================================
 def main():
+    """
+    Resolves IMU ports, starts reading threads, and runs data collection thread.
+    :return: None:
+    :raises: RuntimeError: if a reading thread stops or cannot be started.
+    """
     device_resolution.print_available_serial_ports()
 
     port_imu1 = device_resolution.resolve_device_port("imu1")
     port_imu2 = device_resolution.resolve_device_port("imu2")
-
-    logger.info("Resolved IMU1 -> %s", port_imu1)
-    logger.info("Resolved IMU2 -> %s", port_imu2)
 
     ui.hr(title="Aufnahmesitzung konfigurieren")
     session_name = ui.ask("Bitte Aufnahmesitzung (Recording Session Name) eingeben [Standard: session_<timestamp>]:")
@@ -701,31 +909,30 @@ def main():
     imu1.start()
     imu2.start()
 
+    ui.info("Warte auf Initialisierung der Sensoren (2s)...")
+    time.sleep(2.0)
+
     control_thread = threading.Thread(target=input_thread, args=(imu1, imu2, session_name), daemon=True)
     control_thread.start()
 
     try:
         while running.is_set():
-            data1 = imu1.get_data()
-            data2 = imu2.get_data()
+            if not control_thread.is_alive():
+                logger.error("Control thread died. Aborting pipeline.")
+                raise RuntimeError("Control thread died.")
 
-            if recording.is_set():
-                with _buffer_lock:
-                    imu1_data_buffer.extend(data1)
-                    imu2_data_buffer.extend(data2)
-                    received_counts['IMU1'] += len(data1)
-                    received_counts['IMU2'] += len(data2)
+            if not imu1.running or not imu2.running:
+                logger.error("One of the IMU reading threads stopped running. Aborting pipeline.")
+                raise RuntimeError("IMU reading thread stopped.")
 
-            time.sleep(0.01)
+            time.sleep(0.1)
 
     except KeyboardInterrupt:
-        logger.info("Manuell abgebrochen (STRG+C).")
         running.clear()
 
     finally:
         imu1.stop()
         imu2.stop()
-        logger.info("Programm beendet.")
 
 
 if __name__ == "__main__":

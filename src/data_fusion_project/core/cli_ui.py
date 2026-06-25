@@ -1851,14 +1851,17 @@ class CliUI:
           - 'enter': if enter was pressed.
           - 'aborted': if stop_session is set.
         """
-        steps = 60
-        sleep_time = duration_s / steps
         flush_stdin()
-
-        for i in range(steps + 1):
-            filled = int(bar_width * i / steps)
+        start_time = time.time()
+        
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed >= duration_s:
+                elapsed = duration_s
+                
+            fraction = min(1.0, elapsed / duration_s)
+            filled = int(bar_width * fraction)
             bar = "█" * filled + "░" * (bar_width - filled)
-            elapsed = duration_s * i / steps
             
             bar_text = f"\r  {label}[{bar}] {elapsed:.1f}s / {duration_s:.1f}s  "
             if color:
@@ -1869,26 +1872,24 @@ class CliUI:
                 self.stream.flush()
             except Exception:
                 pass
+                
+            if elapsed >= duration_s:
+                break
+                
+            if stop_session is not None and stop_session.is_set():
+                self._write("")
+                return "aborted"
+                
+            key = get_key_nonblocking()
+            if key == " ":
+                self._write("")
+                return "space"
+            elif key in ("\r", "\n"):
+                self._write("")
+                return "enter"
+                
+            time.sleep(0.01)
             
-            if i < steps:
-                # Poll in smaller sub-steps
-                poll_steps = 10
-                poll_sleep = sleep_time / poll_steps
-                for _ in range(poll_steps):
-                    if stop_session is not None and stop_session.is_set():
-                        self._write("")
-                        return "aborted"
-                    
-                    key = get_key_nonblocking()
-                    if key == " ":
-                        self._write("")
-                        return "space"
-                    elif key in ("\r", "\n"):
-                        self._write("")
-                        return "enter"
-                    
-                    time.sleep(poll_sleep)
-                    
         self._write("")
         return "completed"
 
