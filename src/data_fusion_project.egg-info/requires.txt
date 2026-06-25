@@ -1,0 +1,6 @@
+pyserial
+pyyaml
+pandas
+numpy
+matplotlib
+tqdm

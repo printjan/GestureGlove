@@ -103,8 +103,28 @@ In the dataset an classifiers the naming scheme will be as follows:
 
 ## Project Strucure 
 
+```
+data_fusion_project/
+├── data/
+│   ├── <guesture name>/
+│   │   │   ├── <recording_session>/
+│   │   │   │   ├── calibration.csv # 5 second recording of no movement to establish sensor drift
+│   │   │   │   ├── 00001.csv # first recording of the gesture
+│   │   │   │   ├── 00002.csv # second recording of the gesture
+│   │   │   │   └── 
+```
 
 
+---
+
+
+## Data set structure
+
+Column structure of `<timestamp>.csv` files:
+
+```csv
+IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,IMU2_accZ,IMU2_gyrX,IMU2_gyrY,IMU2_gyrZ
+```
 
 
 ---

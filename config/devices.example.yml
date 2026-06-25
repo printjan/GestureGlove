@@ -13,13 +13,13 @@
 # serial_number kann ein einzelner String (nur ein OS) oder eine Liste sein:
 
 imu1:
-  role: wrist
+  role: index
   serial_number:
     - "REPLACE_WITH_WINDOWS_ID"   # Windows: letztes Segment der hwid
     - "REPLACE_WITH_MAC_SERIAL"   # macOS:   USB-Seriennummer
 
 imu2:
-  role: index
+  role: role
   serial_number:
     - "REPLACE_WITH_WINDOWS_ID"
     - "REPLACE_WITH_MAC_SERIAL"
