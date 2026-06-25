@@ -1,11 +1,6 @@
 # Jan Private Notes
 
 
-
-
-- IMU Data
-
-
 ## Hardware Setup
 
 Sensor board:
@@ -24,7 +19,6 @@ Setup:
 
 ## Project Idea: Gesture Recognition
 
-
 - Setup:
   - One XIAOML Kit on the wrist (IMU Data).
   - One XIAOML Kit on the tip of the index finger (Camera Data).
@@ -35,7 +29,7 @@ Setup:
     - Swipe: right / left (Demonstration: Next / Previous slide in powerpoint.)
     - Short upward / downward jerk (Demonstration: Volume Up / Volume Down.) 
     - Wrist circle clockwise / counter clockwise (Demonstration: Toggle Laser Pointer Mode.)
-    - Hold still or slightly move indiscriminateley: (Demonstration: Idle.)
+    - Idle (Dedicated `None` class) (Hold still or slightly move indiscriminateley): (Demonstration: Idle.)
     - Make fist (Close and immediateley open fist again) (Demonstration: Toggle Laser Pointer Mode.)
 - Possible Extensions:
   - 2. (Optional) Use arm Gestors as an air mouse to interact with the computer.
@@ -47,6 +41,49 @@ Setup:
   - Cotrol the power point laser pointer by hand movement.
 
 
+---
+
+
+## Gestures
+
+### Arm gestures
+
+**Swipe Right / Swipe Left:**
+- Movement: Horizonal movement of the hand with dedicated still moment at the end and the beginning of the gesture.
+- Demonstration: Next / Previous slide in powerpoint.
+**Jerk Up / Jerk Down:**
+- Movement: Vertical movement of the hand with dedicated still moment at the end and the beginning of the gesture.
+- Demonstration: Volume Up / Volume Down.
+**Circle Clockwise / Circle Counter Clockwise:**
+- Movement: Clockwise / Counter Clockwise movement of the wrist with dedicated still moment at the end and the beginning of the gesture.
+- Demonstration: Toggle Laser Pointer Mode.
+
+### Hand gestures
+
+**Make fist:**
+- Movement: Close hand (make fist) and immediately open it again twice. Hand celarly open at the end and beginning of the gesture. During the gesture hand and arm stay still
+- Demonstration: Toggle Laser Pointer Mode.
+
+### Idle
+
+**None class:**
+- Movement: Hold still or slightly move indiscriminateley.
+- Demonstration: Speaking and moving naturally.
+
+
+
+---
+
+
+
+## Dataset structure
+
+
+
+
+
+
+
 ## Technology Stack
 
 
@@ -55,18 +92,6 @@ Setup:
 
 ## Data structure
 
-off-git data storage:
-```
-data/
-  raw/
-    session_xxx/
-      wrist.csv
-      index.csv
-      labels.csv
-      session_metadata.json
-  processed/
-  models/
-```
 
 session_metadata.json:
 ```
@@ -79,19 +104,7 @@ session_metadata.json:
 }
 ```
 
-possible gestures:
-```
-[
-  "idle",
-  "swipe_left",
-  "swipe_right",
-  "circle_cw",
-  "circle_ccw",
-  "fist",
-  "down"
-  "up"
-]
-```
+data/
 
 
 
@@ -200,7 +213,22 @@ conda activate data_fusion_env_1
 ```
 
 
+---
 
+
+## Pitch
+
+- 5 min (auf keinen Fall mehr).
+- 4 Folien.
+  - 1. Team und Problem.
+  - 2./3. Folie Implementierungsdetails.
+  - 4. Folie: Gefilmte Demo (keine Live Demo).
+- Schöne Animationen sind wichtig!
+- Code in Git Repo der Fak Inf ablegen mit Axenie als Maintainer.
+- Folien in Repo ablegen (als .pdf).
+- Alle Medien (also auch Präsi Videos) auf Git ablegen.
+- Mündlich darauf vorbereiten, Fragen zum Projekt zu beantworten (auch kritische).
+- Abgabe: 1. Juli 23:59. Kein Commit mehr danach.
 
 
 

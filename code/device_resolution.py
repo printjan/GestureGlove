@@ -6,6 +6,8 @@ from pathlib import Path
 import yaml
 from serial.tools import list_ports
 
+from data_fusion_project.core.paths import DEVICES_CONFIG_FILE
+
 
 def _normalize_identifier(value: str | None) -> str:
     """
@@ -32,23 +34,9 @@ def _extract_serial_from_hwid(hwid: str | None) -> str | None:
     return None
 
 
-def _find_project_root() -> Path:
-    """
-    Finds the project root by walking upwards until it finds .git or config/.
-    Works whether this file is in the repo root or in a src/scripts folder.
-    """
-    current = Path(__file__).resolve()
-
-    for parent in [current.parent, *current.parents]:
-        if (parent / ".git").exists() or (parent / "config").exists():
-            return parent
-
-    return current.parent
-
-
 def load_device_config(config_path: str | Path | None = None) -> dict:
     if config_path is None:
-        config_path = _find_project_root() / "config" / "devices.yml"
+        config_path = DEVICES_CONFIG_FILE
 
     config_path = Path(config_path)
 
