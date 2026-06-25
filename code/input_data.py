@@ -2,6 +2,7 @@ import serial
 import time
 import threading
 import math
+import queue
 from queue import Queue
 
 class SimpleKalmanFilter:
@@ -105,8 +106,11 @@ class IMUDataInput:
     def get_data(self):
         """Returns all currently buffered data from the queue."""
         data_list = []
-        while not self.data_queue.empty():
-            data_list.append(self.data_queue.get())
+        while True:
+            try:
+                data_list.append(self.data_queue.get_nowait())
+            except queue.Empty:
+                break
         return data_list
 
 if __name__ == "__main__":

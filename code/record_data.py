@@ -1,6 +1,7 @@
 import time
 import os
 import threading
+import queue
 import pandas as pd
 # pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
@@ -21,13 +22,16 @@ GESTURE_LABELS = {
 }
 
 
-# Globale Variablen für Threading/Control
-running = True
-recording = False
-current_gesture = 0
+# Thread-Steuerung über Events (statt rohe Booleans)
+running = threading.Event()
+running.set()
+recording = threading.Event()
 
+# Puffer + zugehöriger Lock für thread-sicheren Zugriff
+_buffer_lock = threading.Lock()
 imu1_data_buffer = []
 imu2_data_buffer = []
+current_gesture = 0
 
 
 def _show_progress_bar(duration_s, bar_width=40):
@@ -44,15 +48,15 @@ def _show_progress_bar(duration_s, bar_width=40):
 
 
 def input_thread(imu1, imu2):
-    global recording, running, current_gesture, imu1_data_buffer, imu2_data_buffer
+    global current_gesture
 
     print("\n--- Setup Complete ---")
-    while running:
+    while running.is_set():
         options = "  ".join(f"{i}: {label}" for i, label in GESTURE_LABELS.items())
         user_input = input(f"\nGeste auswählen [{options}] (oder 'q'): ")
 
         if user_input.strip().lower() == 'q':
-            running = False
+            running.clear()
             break
 
         try:
@@ -68,31 +72,34 @@ def input_thread(imu1, imu2):
         print(f"Geste: {GESTURE_LABELS[current_gesture]}")
         input(f"Bereit? [Enter] drücken, dann Geste ausführen ({RECORD_DURATION_S}s)...")
 
-        # Puffer leeren
-        imu1.get_data()
-        imu2.get_data()
-        imu1_data_buffer.clear()
-        imu2_data_buffer.clear()
+        # Puffer atomar leeren, dann erst recording aktivieren
+        with _buffer_lock:
+            imu1.get_data()
+            imu2.get_data()
+            imu1_data_buffer.clear()
+            imu2_data_buffer.clear()
 
         print(f">>> AUFNAHME LÄUFT ({TARGET_SAMPLES} Samples @ 100 Hz) <<<")
-        recording = True
+        recording.set()
         _show_progress_bar(RECORD_DURATION_S)
-        recording = False
+        recording.clear()
         print(">>> AUFNAHME BEENDET <<<")
 
         process_and_save_data()
 
 def process_and_save_data():
-    global imu1_data_buffer, imu2_data_buffer
-    print(f"Verarbeite Daten: {len(imu1_data_buffer)} Pakete von IMU1, {len(imu2_data_buffer)} Pakete von IMU2")
+    with _buffer_lock:
+        snapshot1 = list(imu1_data_buffer)
+        snapshot2 = list(imu2_data_buffer)
+    print(f"Verarbeite Daten: {len(snapshot1)} Pakete von IMU1, {len(snapshot2)} Pakete von IMU2")
     
-    if len(imu1_data_buffer) == 0 and len(imu2_data_buffer) == 0:
+    if len(snapshot1) == 0 and len(snapshot2) == 0:
         print("Keine Daten gesammelt. Überspringe Speichern.")
         return
 
     # In Pandas DataFrames konvertieren
-    df1 = pd.DataFrame(imu1_data_buffer)
-    df2 = pd.DataFrame(imu2_data_buffer)
+    df1 = pd.DataFrame(snapshot1)
+    df2 = pd.DataFrame(snapshot2)
 
     # Zusammenführen und Synchronisieren über unsere neue Pipeline
     merged_df, valid_windows = process_stream(df1, df2, window_sz=TARGET_SAMPLES, max_diff_us=5000, freq_hz=100)
@@ -184,8 +191,6 @@ def plot_data(df):
     plt.show(block=False) 
 
 def main():
-    global recording, running, imu1_data_buffer, imu2_data_buffer
-    
     # Sensoren initialisieren
     device_resolution.print_available_serial_ports()
 
@@ -201,33 +206,30 @@ def main():
     # Reader-Threads starten
     imu1.start()
     imu2.start()
-    
+
     # Den Konsolen-Input in einem separaten Thread starten
     control_thread = threading.Thread(target=input_thread, args=(imu1, imu2), daemon=True)
     control_thread.start()
-    
+
     try:
         # Haupt-Schleife: Pollt die Sensor-Queues
-        while running:
-            # Puffer regelmäßig leeren, unabhängig ob aufgenommen wird
-            # Das verhindert, dass der RAM mit der Zeit vollläuft.
+        while running.is_set():
             data1 = imu1.get_data()
             data2 = imu2.get_data()
-            
-            # Falls wir gerade aufnehmen, hängen wir sie an unsere Speicher-Puffer an
-            if recording:
-                imu1_data_buffer.extend(data1)
-                imu2_data_buffer.extend(data2)
-            
-            # Kurze Pause um CPU-Last gering zu halten
-            time.sleep(0.01) 
-            
+
+            # Falls wir gerade aufnehmen, Daten thread-sicher in Puffer schreiben
+            if recording.is_set():
+                with _buffer_lock:
+                    imu1_data_buffer.extend(data1)
+                    imu2_data_buffer.extend(data2)
+
+            time.sleep(0.01)
+
     except KeyboardInterrupt:
         print("\nManuell abgebrochen (STRG+C).")
-        running = False
-        
+        running.clear()
+
     finally:
-        # Aufräumen nicht vergessen
         imu1.stop()
         imu2.stop()
         print("Programm beendet.")
