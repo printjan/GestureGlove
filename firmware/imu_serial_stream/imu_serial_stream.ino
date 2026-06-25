@@ -14,7 +14,6 @@ void setup() {
   unsigned long start_ms = millis();
   while (!Serial && millis() - start_ms < 3000) {
     delay(10);
-    git merge-- no - ff-- no - commit origin / main
   }
 
   Wire.begin();
