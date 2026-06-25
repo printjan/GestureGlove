@@ -37,7 +37,7 @@ class IMUDataInput:
         
     def connect(self):
         try:
-            self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=0.1)
             print(f"[{self.name}] Connected to {self.port} at {self.baudrate} baud.")
             time.sleep(2)  # Wait for the serial connection to initialize
             return True
@@ -68,37 +68,38 @@ class IMUDataInput:
         self.ser.reset_input_buffer()
         while self.running:
             try:
-                if self.ser.in_waiting > 0:
-                    line = self.ser.readline().decode('utf-8').strip()
-                    pc_timestamp = time.time()
-                    
-                    # Expected format now: timestamp_us, accX, accY, accZ, gyrX, gyrY, gyrZ
-                    data = line.split(',')
-                    if len(data) == 7:
-                        try:
-                            esp_us = int(data[0])
-                            ax, ay, az, gx, gy, gz = map(float, data[1:])
-                            
-                            # Roll und Pitch berechnen
-                            roll = math.atan2(ay, az) * 180.0 / math.pi
-                            pitch = math.atan2(-ax, math.sqrt(ay * ay + az * az)) * 180.0 / math.pi
-                            
-                            # Mit Kalman Filter glätten
-                            roll_kf = self.kf_roll.update_estimate(roll)
-                            pitch_kf = self.kf_pitch.update_estimate(pitch)
-                            
-                            packed_data = {
-                                'sensor_id': self.name,
-                                'pc_timestamp_us': int(pc_timestamp * 1e6),
-                                'esp_timestamp_us': esp_us,
-                                'accX': ax, 'accY': ay, 'accZ': az,
-                                'gyrX': gx, 'gyrY': gy, 'gyrZ': gz,
-                                'roll': roll, 'pitch': pitch,
-                                'roll_kf': roll_kf, 'pitch_kf': pitch_kf
-                            }
-                            self.data_queue.put(packed_data)
-                        except ValueError:
-                            pass # Ignore parse errors (e.g. malformed serial line)
+                line = self.ser.readline().decode('utf-8', errors='ignore').strip()
+                if not line:
+                    continue
+                pc_timestamp = time.time()
+                
+                # Expected format now: timestamp_us, accX, accY, accZ, gyrX, gyrY, gyrZ
+                data = line.split(',')
+                if len(data) == 7:
+                    try:
+                        esp_us = int(data[0])
+                        ax, ay, az, gx, gy, gz = map(float, data[1:])
+                        
+                        # Roll und Pitch berechnen
+                        roll = math.atan2(ay, az) * 180.0 / math.pi
+                        pitch = math.atan2(-ax, math.sqrt(ay * ay + az * az)) * 180.0 / math.pi
+                        
+                        # Mit Kalman Filter glätten
+                        roll_kf = self.kf_roll.update_estimate(roll)
+                        pitch_kf = self.kf_pitch.update_estimate(pitch)
+                        
+                        packed_data = {
+                            'sensor_id': self.name,
+                            'pc_timestamp_us': int(pc_timestamp * 1e6),
+                            'esp_timestamp_us': esp_us,
+                            'accX': ax, 'accY': ay, 'accZ': az,
+                            'gyrX': gx, 'gyrY': gy, 'gyrZ': gz,
+                            'roll': roll, 'pitch': pitch,
+                            'roll_kf': roll_kf, 'pitch_kf': pitch_kf
+                        }
+                        self.data_queue.put(packed_data)
+                    except ValueError:
+                        pass # Ignore parse errors (e.g. malformed serial line)
             except Exception as e:
                 print(f"[{self.name}] Error reading from serial: {e}")
                 time.sleep(0.1)

@@ -1,26 +1,25 @@
 #include <Arduino.h>
-#include <Wire.h>
 #include <LSM6DS3.h>
+#include <Wire.h>
 
 LSM6DS3 myIMU(I2C_MODE, 0x6A);
 
 static const unsigned long SAMPLE_PERIOD_US = 10000; // 100 Hz
 unsigned long next_sample_us = 0;
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
 
   // Nicht endlos blockieren, falls kein Serial Monitor offen ist.
   unsigned long start_ms = millis();
   while (!Serial && millis() - start_ms < 3000) {
     delay(10);
+    git merge-- no - ff-- no - commit origin / main
   }
 
   Wire.begin();
 
-  if (myIMU.begin() != 0)
-  {
+  if (myIMU.begin() != 0) {
     Serial.println("ERROR: IMU initialization failed!");
     while (1) {
       delay(1000);
@@ -31,8 +30,7 @@ void setup()
   next_sample_us = micros();
 }
 
-void loop()
-{
+void loop() {
   unsigned long now = micros();
 
   if ((long)(now - next_sample_us) < 0) {

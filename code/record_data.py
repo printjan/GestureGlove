@@ -32,6 +32,7 @@ _buffer_lock = threading.Lock()
 imu1_data_buffer = []
 imu2_data_buffer = []
 current_gesture = 0
+plot_queue = queue.Queue()
 
 
 def _show_progress_bar(duration_s, bar_width=40):
@@ -121,8 +122,8 @@ def process_and_save_data():
     merged_df.to_csv(filename, index=False)
     print(f"Datensatz gespeichert unter: {filename}\n")
     
-    # Plot anzeigen
-    plot_data(merged_df)
+    # Plot in die Queue einfügen, damit der Haupt-Thread ihn zeichnet
+    plot_queue.put(merged_df)
 
 
 def plot_data(df):
@@ -223,7 +224,19 @@ def main():
                     imu1_data_buffer.extend(data1)
                     imu2_data_buffer.extend(data2)
 
-            time.sleep(0.01)
+            # Prüfen, ob ein Plot gezeichnet werden soll
+            try:
+                df_to_plot = plot_queue.get_nowait()
+                plot_data(df_to_plot)
+            except queue.Empty:
+                pass
+
+            # plt.pause(0.01) statt time.sleep(0.01) verwenden, wenn ein Plot aktiv ist,
+            # um die GUI interaktiv zu halten.
+            if plt.get_fignums():
+                plt.pause(0.01)
+            else:
+                time.sleep(0.01)
 
     except KeyboardInterrupt:
         print("\nManuell abgebrochen (STRG+C).")
