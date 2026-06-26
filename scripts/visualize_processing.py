@@ -10,6 +10,11 @@ Renders the diagnostic plots that let you judge pipeline quality at a glance:
                           (the key sensor-fusion quality plot)
   4. Calibration          gyro before vs. after bias removal
   5. Dataset overview     class distribution + per-class channel mean (real data only)
+  6. Filter comparison    all frequency filters (none/low-/high-/band-pass) side by side
+  7. Channel comparison   every feature-stage time-series channel grouped by physical type
+
+Diagrams 3, 6 and 7 are the explicit "compare-them-all" plots: 3 overlays every
+orientation-fusion method, 6 every frequency filter, 7 every selectable time-series channel.
 
 It runs against a recorded sample from ``data/`` or, with ``--synthetic``, against a
 generated window with known ground truth so you can validate the diagrams immediately
@@ -40,11 +45,12 @@ sys.path.append(str(PROJECT_ROOT / "src"))
 
 from data_fusion_project.core.paths import DATA_DIR, GESTURES
 from data_fusion_project.processing import (
-    PipelineConfig, OrientationConfig, OrientationMethod, FilterType,
+    PipelineConfig, OrientationConfig, OrientationMethod, FilterType, FeatureConfig,
     estimate_calibration, identity_profile, load_dataset,
 )
 from data_fusion_project.processing import calibration as calib
 from data_fusion_project.processing import filters as filt
+from data_fusion_project.processing import features as feats
 from data_fusion_project.processing.orientation import estimate_orientation
 
 COLUMNS = [
@@ -321,6 +327,134 @@ def plot_dataset_overview(data_dir, out_dir):
 
 
 # ======================================================================================================================
+# Comparison plots (all filters / all channels in one figure)
+# ======================================================================================================================
+def plot_filter_comparison(st, imu, out_dir, config):
+    """
+    Saves a side-by-side comparison of every frequency filter on the calibrated signal.
+    :param: st (dict): prepared signal stages (uses the calibrated, pre-filter blocks).
+    :param: imu (str): IMU prefix, e.g. "IMU1".
+    :param: out_dir (Path): output directory.
+    :param: config (PipelineConfig): supplies cutoffs (low-pass, gravity/high-pass edge) and order.
+    :return: path (Path): written PNG path.
+    """
+    t, fs = st["t"], st["fs"]
+    acc, gyr = st["acc_cal"], st["gyr_cal"]
+    # Derive cutoffs from the configured pipeline so the comparison matches production defaults.
+    lp_acc = config.filters.acc_cutoff_hz[1] if isinstance(config.filters.acc_cutoff_hz, tuple) else config.filters.acc_cutoff_hz
+    lp_gyr = config.filters.gyro_cutoff_hz[1] if isinstance(config.filters.gyro_cutoff_hz, tuple) else config.filters.gyro_cutoff_hz
+    hp = config.filters.gravity_cutoff_hz
+
+    # (FilterType, row label, acc cutoff, gyro cutoff). NONE ignores the cutoff (passthrough).
+    rows = [
+        (FilterType.NONE, "None\n(calibrated)", None, None),
+        (FilterType.LOWPASS, f"Low-pass\n(<= {lp_acc:g}/{lp_gyr:g} Hz)", lp_acc, lp_gyr),
+        (FilterType.HIGHPASS, f"High-pass\n(>= {hp:g} Hz)", hp, hp),
+        (FilterType.BANDPASS, f"Band-pass\n({hp:g}-{lp_acc:g}/{lp_gyr:g} Hz)", (hp, lp_acc), (hp, lp_gyr)),
+    ]
+    labels = ("X", "Y", "Z"); colors = ("#d62728", "#2ca02c", "#1f77b4")
+
+    fig, axs = plt.subplots(len(rows), 2, figsize=(13, 11), sharex=True)
+    fig.suptitle(f"Frequency-filter comparison — {imu} (rows = filter type)", fontweight="bold")
+    for r, (ftype, rlabel, ca, cg) in enumerate(rows):
+        acc_f = filt.apply_filter(acc, ftype, ca, fs, config.filters.order)
+        gyr_f = filt.apply_filter(gyr, ftype, cg, fs, config.filters.order)
+        for j in range(3):
+            axs[r, 0].plot(t, acc_f[:, j], color=colors[j], lw=1.2, label=f"acc{labels[j]}" if r == 0 else None)
+            axs[r, 1].plot(t, gyr_f[:, j], color=colors[j], lw=1.2, label=f"gyr{labels[j]}" if r == 0 else None)
+        axs[r, 0].set_ylabel(rlabel, fontsize=9)
+        for c in (0, 1):
+            axs[r, c].axhline(0, color="black", lw=0.6, alpha=0.4)
+            axs[r, c].grid(True, ls="--", alpha=0.4)
+
+    axs[0, 0].set_title("Accelerometer [g]"); axs[0, 1].set_title("Gyroscope [dps]")
+    axs[0, 0].legend(loc="upper right", fontsize=7, ncol=3)
+    axs[0, 1].legend(loc="upper right", fontsize=7, ncol=3)
+    axs[-1, 0].set_xlabel("t [s]"); axs[-1, 1].set_xlabel("t [s]")
+    plt.tight_layout()
+    path = out_dir / f"06_filter_comparison_{imu}.png"
+    fig.savefig(path, dpi=110); plt.close(fig)
+    return path
+
+
+def _channel_group(name: str) -> tuple[str, str]:
+    """
+    Maps a feature-stage channel name to a (group_key, panel_title) so channels sharing a
+    physical unit are plotted together.
+    :param: name (str): channel name, e.g. "IMU1_accX", "diff_gyrZ", "IMU2_roll".
+    :return: result (tuple): (group_key, panel_title).
+    """
+    if name.endswith("_roll") or name.endswith("_pitch"):
+        return "orientation", "Orientation roll/pitch [deg]"
+    if name.endswith("acc_mag"):
+        return "acc_mag", "Accelerometer magnitude [g]"
+    if name.endswith("gyr_mag"):
+        return "gyr_mag", "Gyroscope magnitude [dps]"
+    if name.startswith("diff_acc"):
+        return "diff_acc", "Inter-IMU acc difference (IMU2-IMU1) [g]"
+    if name.startswith("diff_gyr"):
+        return "diff_gyr", "Inter-IMU gyro difference (IMU2-IMU1) [dps]"
+    if "_acc" in name:
+        return "acc", "Accelerometer [g]"
+    if "_gyr" in name:
+        return "gyr", "Gyroscope [dps]"
+    return "other", "Other"
+
+
+def plot_channel_comparison(df, cal_df, config, out_dir):
+    """
+    Saves every selectable feature-stage time-series channel, grouped by physical type.
+    :param: df (pd.DataFrame): raw window.
+    :param: cal_df (pd.DataFrame | None): session calibration frame.
+    :param: config (PipelineConfig): pipeline configuration (orientation method, cutoffs).
+    :param: out_dir (Path): output directory.
+    :return: path (Path): written PNG path.
+    """
+    # Enable every channel type so the figure shows the full feature-stage output.
+    fc = FeatureConfig(imus=("IMU1", "IMU2"), include_acc=True, include_gyro=True,
+                       include_acc_magnitude=True, include_gyro_magnitude=True,
+                       include_diff_acc=True, include_diff_gyro=True, include_orientation=True)
+
+    processed, orientation = {}, {}
+    for imu in ("IMU1", "IMU2"):
+        s = prepare(df, cal_df, imu, config)
+        processed[imu] = {"acc": s["acc_filt"], "gyr": s["gyr_filt"]}
+        orientation[imu] = estimate_orientation(s["acc_filt"], s["gyr_filt"], s["fs"], config.orientation)
+
+    channels, names = feats.build_channels(processed, orientation, fc)
+    t = np.arange(channels.shape[0]) / config.sample_rate_hz
+
+    # Bucket channels into ordered groups that share a unit (one panel per group).
+    order: list[str] = []
+    grouped: dict[str, tuple[str, list[tuple[int, str]]]] = {}
+    for c, name in enumerate(names):
+        key, title = _channel_group(name)
+        if key not in grouped:
+            grouped[key] = (title, [])
+            order.append(key)
+        grouped[key][1].append((c, name))
+
+    fig, axs = plt.subplots(len(order), 1, figsize=(13, 2.4 * len(order)), sharex=True)
+    if len(order) == 1:
+        axs = [axs]
+    fig.suptitle(f"Time-series channel comparison ({config.orientation.method.value} orientation)", fontweight="bold")
+    cmap = plt.get_cmap("tab10")
+    for ax, key in zip(axs, order):
+        title, cols = grouped[key]
+        for i, (c, name) in enumerate(cols):
+            ax.plot(t, channels[:, c], lw=1.2, color=cmap(i % 10), label=name)
+        ax.set_title(title, fontsize=10, loc="left")
+        ax.axhline(0, color="black", lw=0.6, alpha=0.4)
+        ax.grid(True, ls="--", alpha=0.4)
+        ax.legend(loc="upper right", fontsize=7, ncol=max(1, (len(cols) + 1) // 2))
+    axs[-1].set_xlabel("t [s]")
+    plt.tight_layout()
+    path = out_dir / "07_channel_comparison.png"
+    fig.savefig(path, dpi=110); plt.close(fig)
+    return path
+
+
+# ======================================================================================================================
 # Main
 # ======================================================================================================================
 def main(argv=None) -> int:
@@ -373,6 +507,8 @@ def main(argv=None) -> int:
         plot_gravity_removal(st, args.imu, out_dir, config),
         plot_orientation_methods(st, args.imu, out_dir, config, truth=truth),
         plot_calibration(st, args.imu, out_dir),
+        plot_filter_comparison(st, args.imu, out_dir, config),
+        plot_channel_comparison(df, cal_df, config, out_dir),
     ]
     overview = plot_dataset_overview(data_dir, out_dir)
     if overview is not None:

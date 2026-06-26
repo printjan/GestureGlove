@@ -177,7 +177,8 @@ through four declarative stages and returns CNN-ready NumPy arrays.
 | Features | `features.py` | Assembles the `(T, C)` channel matrix (raw acc/gyro, inter-IMU differences, magnitudes, roll/pitch) and optional scalar features (cross-correlation, statistics). |
 
 Everything is driven by `PipelineConfig` (and its stage configs), so feature experiments
-are a one-line change. The result is a `GestureDataset` container:
+are a one-line change — see [documentation/pipeline_configuration.md](documentation/pipeline_configuration.md)
+for every setting, its default and what it does. The result is a `GestureDataset` container:
 
 - `X` — `float32` time-series tensor of shape `(N, T, C)` (directly feeds `Conv1D`)
 - `y` — `int` labels `(N,)`; `groups` — session id per window `(N,)` for leave-session-out splits
