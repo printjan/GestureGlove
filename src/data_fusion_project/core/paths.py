@@ -63,7 +63,7 @@ def get_project_root() -> Path:
 BASE_DIRECTORY = get_project_root()
 
 CONFIG_DIR = BASE_DIRECTORY / "config"
-CODE_DIR = BASE_DIRECTORY / "code"
+SCRIPTS_DIR = BASE_DIRECTORY / "scripts"
 DOCUMENTATION_DIR = BASE_DIRECTORY / "documentation"
 FIRMWARE_DIR = BASE_DIRECTORY / "firmware"
 DATA_DIR = BASE_DIRECTORY / "data"

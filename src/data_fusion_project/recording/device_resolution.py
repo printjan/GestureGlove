@@ -1,4 +1,4 @@
-# device_resolution.py
+# src/data_fusion_project/recording/device_resolution.py
 
 import re
 from pathlib import Path
@@ -150,7 +150,7 @@ def resolve_device_port(device_key: str, config_path: str | Path | None = None) 
         f"Expected serial_number={spec.get('serial_number')!r}, location={spec.get('location')!r}.\n"
         "Prüfe ob das Board verbunden ist und ob config/devices.yml die richtige\n"
         "Seriennummer für dieses Betriebssystem enthält.\n"
-        "Tipp: python code/device_resolution.py  listet alle verbundenen Ports."
+        "Tipp: python -m data_fusion_project.recording.device_resolution  listet alle verbundenen Ports."
     )
 
 

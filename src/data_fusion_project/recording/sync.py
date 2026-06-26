@@ -1,4 +1,4 @@
-# code/sync.py
+# src/data_fusion_project/recording/sync.py
 """
 Data synchronization module for merging and windowing dual IMU sensor streams.
 """

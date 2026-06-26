@@ -12,6 +12,7 @@ dependencies = [
     "pyyaml",
     "pandas",
     "numpy",
+    "scipy",
     "matplotlib",
     "tqdm"
 ]

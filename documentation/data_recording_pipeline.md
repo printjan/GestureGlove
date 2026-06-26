@@ -33,7 +33,7 @@ graph TD
     Q2 -- get_data() --> MT
 ```
 
-* **`IMUDataInput` (`code/input_data.py`):** Manages a background daemon thread (`_read_loop`) executing blocking serial reads. 
+* **`IMUDataInput` (`src/data_fusion_project/recording/input_data.py`):** Manages a background daemon thread (`_read_loop`) executing blocking serial reads. 
 * **Buffering:** Parsed incoming packets are pushed to a thread-safe `queue.Queue()`. 
 * **Decoupled Main Loop:** The main thread retrieves accumulated packets using non-blocking `get_data()` drains, separating serial I/O scheduling from the progress bar timers.
 
@@ -55,7 +55,7 @@ To ensure the overlapping region is long enough to fit a complete target window 
 
 ## 4. Temporal Alignment & Grid Resampling
 
-Raw snapshots are aligned and resampled in [sync.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/code/sync.py) before window extraction:
+Raw snapshots are aligned and resampled in [sync.py](../src/data_fusion_project/recording/sync.py) before window extraction:
 
 ```
 Raw IMU1: [s1]------[s2]------[s3]------[s4]------[s5]
@@ -100,4 +100,4 @@ To ensure that only high-quality data is recorded, the pipeline aborts immediate
 * **Datapoint Strict Validation:** Prior to writing the synchronized DataFrame to a `.csv` file, the pipeline verifies that the sample has exactly the target number of datapoints (150 for gestures, 500 for calibration). Any mismatch immediately raises an error and aborts.
 * **Sync Check:** If the nearest-neighbor discrepancy exceeds $10\text{ ms}$ inside the centered window, the session aborts.
 * **Disconnect Monitoring:** The main thread monitors the states of `control_thread`, `imu1.running`, and `imu2.running`. If a thread terminates or a serial read raises an exception, the script immediately propagates the failure, logs an `ERROR`, and exits with `exit code 1`.
-* **Offline Sample Auditing:** The [check_samples.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/scripts/check_samples.py) script scans the data directory recursively to verify that all finalized gesture CSVs contain exactly 150 rows, flagging any too short or too long samples.
+* **Offline Sample Auditing:** The [check_samples.py](../scripts/check_samples.py) script scans the data directory recursively to verify that all finalized gesture CSVs contain exactly 150 rows, flagging any too short or too long samples.

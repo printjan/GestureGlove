@@ -163,6 +163,55 @@ Extracts trainings data and OPTIONALLY preprocesses it providing different prepr
   - `index_gyro - wrist_gyro`
   - `cross-correlation features`
 
+### Implementation: `data_fusion_project.processing`
+
+The pipeline above is implemented as a configurable package in
+`src/data_fusion_project/processing/`. It reads the `data/` tree, processes every window
+through four declarative stages and returns CNN-ready NumPy arrays.
+
+| Stage | Module | What it does |
+|-------|--------|--------------|
+| Calibration | `calibration.py` | Estimates gyro zero-bias, gravity magnitude/direction and acc bias from each session's `calibration.csv`, then applies `gyro - bias` and `acc / g`. |
+| Filtering | `filters.py` | Zero-phase Butterworth low-/high-/band-pass (scipy `sosfiltfilt`) plus gravity removal (low-pass split into gravity + linear acceleration). |
+| Orientation | `orientation.py` | Computes roll/pitch from the *pre-filtered* signals and refines them with a fusion filter: `accel`, `gyro`, **`complementary`** or **`kalman`** (2-state, estimates gyro bias). |
+| Features | `features.py` | Assembles the `(T, C)` channel matrix (raw acc/gyro, inter-IMU differences, magnitudes, roll/pitch) and optional scalar features (cross-correlation, statistics). |
+
+Everything is driven by `PipelineConfig` (and its stage configs), so feature experiments
+are a one-line change. The result is a `GestureDataset` container:
+
+- `X` — `float32` time-series tensor of shape `(N, T, C)` (directly feeds `Conv1D`)
+- `y` — `int` labels `(N,)`; `groups` — session id per window `(N,)` for leave-session-out splits
+- `features` — optional scalar-feature matrix `(N, F)`; plus `class_names` / `channel_names` / `feature_names`
+
+```python
+from data_fusion_project.processing import (
+    load_dataset, PipelineConfig, OrientationConfig, FeatureConfig,
+    OrientationMethod, leave_sessions_out,
+)
+
+# Default configuration: calibrated + low-pass filtered + complementary roll/pitch.
+ds = load_dataset()
+print(ds.summary())                 # shapes, channels, per-class counts
+
+# Custom experiment: Kalman orientation for both IMUs + inter-IMU diff + cross-correlation.
+cfg = PipelineConfig(
+    orientation=OrientationConfig(method=OrientationMethod.KALMAN, imus=("IMU1", "IMU2")),
+    features=FeatureConfig(include_diff_acc=True, include_diff_gyro=True, cross_correlation=True),
+)
+ds = load_dataset(cfg)
+
+# Honest evaluation: no session appears in both train and test.
+train_idx, test_idx = leave_sessions_out(ds.groups, test_fraction=0.2)
+X_train, y_train = ds.X[train_idx], ds.y[train_idx]   # -> CNN
+```
+
+CLI / cached export:
+
+```bash
+python scripts/build_dataset.py --orientation kalman --diff --cross-correlation
+python scripts/build_dataset.py --save data/cache/dataset.npz   # reload via GestureDataset.load(...)
+```
+
 
 ---
 
@@ -200,3 +249,4 @@ Capabilities:
 - path resolution
 - logging
 - cli ui
+- data processing & feature extraction (`data_fusion_project.processing`): calibration, filtering, roll/pitch sensor fusion (complementary & Kalman), configurable feature assembly, CNN-ready dataset loading

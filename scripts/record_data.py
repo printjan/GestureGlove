@@ -1,4 +1,4 @@
-# code/record_data.py
+# scripts/record_data.py
 """
 Data recording script to stream, synchronize, and save IMU datasets for gestures.
 
@@ -64,9 +64,9 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend to prevent GUI/threading crashes
 import matplotlib.pyplot as plt
-from input_data import IMUDataInput
-from sync import process_stream
-import device_resolution
+from data_fusion_project.recording.input_data import IMUDataInput
+from data_fusion_project.recording.sync import process_stream
+from data_fusion_project.recording import device_resolution
 from data_fusion_project.core.paths import DATA_DIR, GESTURES, get_calibration_file, get_next_recording_file
 from data_fusion_project.core.logger_setup import get_logger, set_log_level
 from data_fusion_project.core.cli_ui import ui, Style
@@ -80,7 +80,7 @@ set_log_level("WARNING")
 BAUDRATE = 115200
 RECORD_DURATION_S = 1.5
 TARGET_SAMPLES = 150  # = RECORD_DURATION_S * 100 Hz
-PLOT_EVERY_SAMPLE = False
+PLOT_EVERY_SAMPLE = True
 PLOT_MOVEMENT_DISTRIBUTION = True
 MAX_DEVIATION_OF_TARGET_SAMPLE_RATE = 30  # Max permitted sample count deviation percentage (20%)
 

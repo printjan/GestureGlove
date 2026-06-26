@@ -50,24 +50,30 @@ data_fusion_project/
 │           ├── calibration.csv # 3-5 second static recording to measure drift
 │           ├── 00001.csv       # first sequential gesture recording
 │           └── 00002.csv
-├── code/                       # hardware interfaces and recording scripts
-│   ├── record_data.py          # recording controller script
-│   ├── input_data.py           # serial receiver interface
-│   ├── device_resolution.py    # hardware port mapping
-│   └── sync.py                 # timestamp window synchronization
+├── scripts/                       # runnable entry points / CLIs
+│   ├── record_data.py             # recording controller (entry point)
+│   ├── build_dataset.py           # builds the CNN-ready processing dataset
+│   ├── visualize_processing.py    # processing pipeline diagnostic plots
+│   └── check_samples.py           # dataset sanity check
 └── src/
     └── data_fusion_project/
         ├── __init__.py
-        └── core/
-            ├── __init__.py
-            ├── paths.py        # path resolution constants and utilities
-            ├── logger_setup.py # standardized aligned logging setup
-            ├── cli_ui.py       # rich CLI formatting, spinners and prompt helpers
-            ├── errors.py       # core package exceptions
-            ├── json_loader.py
-            ├── json_writer.py
-            ├── toml_loader.py
-            └── toml_writer.py
+        ├── core/                  # project-agnostic infrastructure
+        │   ├── __init__.py
+        │   ├── paths.py           # path resolution constants and utilities
+        │   ├── logger_setup.py    # standardized aligned logging setup
+        │   ├── cli_ui.py          # rich CLI formatting, spinners and prompt helpers
+        │   ├── errors.py          # core package exceptions
+        │   ├── json_loader.py
+        │   ├── json_writer.py
+        │   ├── toml_loader.py
+        │   └── toml_writer.py
+        ├── recording/             # hardware interfaces & stream synchronization
+        │   ├── __init__.py
+        │   ├── input_data.py      # serial receiver interface
+        │   ├── device_resolution.py  # hardware port mapping
+        │   └── sync.py            # timestamp window synchronization
+        └── processing/            # offline calibration / feature pipeline (CNN-ready arrays)
 ```
 
 ### How `data_fusion_project` Finds Paths
@@ -106,7 +112,7 @@ This module centralizes all filesystem locations and helper directories.
 **Important Constants:**
 - `BASE_DIRECTORY`: Resolved repository root directory.
 - `CONFIG_DIR`: Location of configurations (`config/`).
-- `CODE_DIR`: Location of script sources (`code/`).
+- `SCRIPTS_DIR`: Location of runnable scripts / entry points (`scripts/`).
 - `DATA_DIR`: Location of the datasets folder (`data/`).
 - `LOGS_DIR`: Location of application logs (`logs/`).
 - `DEVICES_CONFIG_FILE`: File path to `config/devices.yml`.

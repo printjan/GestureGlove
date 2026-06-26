@@ -1,4 +1,4 @@
-# code/input_data.py
+# src/data_fusion_project/recording/input_data.py
 """
 IMU input module that manages threaded serial connection reading.
 

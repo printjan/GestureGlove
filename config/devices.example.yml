@@ -8,7 +8,7 @@
 #   macOS    → USB-Seriennummer des Chips,  z.B. "E6632038A34E2B38"
 #
 # Um die Seriennummern der verbundenen Boards zu ermitteln:
-#   python code/device_resolution.py
+#   python -m data_fusion_project.recording.device_resolution
 #
 # serial_number kann ein einzelner String (nur ein OS) oder eine Liste sein:
 
