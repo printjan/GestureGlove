@@ -61,7 +61,7 @@ Top-level acquisition parameters plus the four nested stage configs.
 
 ## 2. `CalibrationConfig` — bias removal & normalization
 
-Uses each session's `calibration.csv` (≈5 s of stillness) to correct the raw signals.
+Uses the session's calibration files (e.g. `calibration_0.csv`, `calibration_1.csv`, etc., as resolved via `recording_session.json`) to correct the raw signals.
 
 | Field | Type | Default | Options / Range | What it does |
 |-------|------|---------|-----------------|--------------|

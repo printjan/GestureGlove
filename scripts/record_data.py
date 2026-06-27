@@ -58,6 +58,7 @@ import random
 import threading
 import queue
 import platform
+import json
 from pathlib import Path
 import pandas as pd
 # pyrefly: ignore [missing-import]
@@ -67,12 +68,14 @@ import matplotlib.pyplot as plt
 from data_fusion_project.recording.input_data import IMUDataInput
 from data_fusion_project.recording.sync import process_stream
 from data_fusion_project.recording import device_resolution
-from data_fusion_project.core.paths import DATA_DIR, GESTURES, get_calibration_file, get_next_recording_file
+from data_fusion_project.core.paths import DATA_DIR, GESTURES, get_calibration_file, get_next_recording_file, get_session_metadata_file
 from data_fusion_project.core.logger_setup import get_logger, set_log_level
 from data_fusion_project.core.cli_ui import ui, Style
 
 logger = get_logger("IMU_Record")
 set_log_level("WARNING")
+
+
 
 # ======================================================================================================================
 # Configuration & State
@@ -80,9 +83,11 @@ set_log_level("WARNING")
 BAUDRATE = 115200
 RECORD_DURATION_S = 1.5
 TARGET_SAMPLES = 150  # = RECORD_DURATION_S * 100 Hz
-PLOT_EVERY_SAMPLE = True
+PLOT_EVERY_SAMPLE = False
 PLOT_MOVEMENT_DISTRIBUTION = True
-MAX_DEVIATION_OF_TARGET_SAMPLE_RATE = 30  # Max permitted sample count deviation percentage (20%)
+PLOT_CALIBRATION_RECORDING = True
+MAX_DEVIATION_OF_TARGET_SAMPLE_RATE = 30  # Max permitted sample count deviation percentage (30%)
+MAX_SAMPLES_BEFORE_RECALIBRATION = 25  # Number of samples recorded before requiring a re-calibration pose
 
 PRE_BUFFER_S = 0.05
 POST_BUFFER_S = 0.05
@@ -114,6 +119,74 @@ received_counts = {'IMU1': 0, 'IMU2': 0}
 current_gesture = 0
 
 
+session_metadata = {}
+
+
+def load_or_init_metadata(gesture_name: str, session_name: str):
+    """
+    Loads existing session metadata or initializes a new one.
+    """
+    global session_metadata
+    meta_file = get_session_metadata_file(gesture_name, session_name)
+    if meta_file.exists():
+        try:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                session_metadata = json.load(f)
+        except Exception as e:
+            logger.error("Failed to load session metadata: %s. Re-initializing.", e)
+            init_new_metadata()
+    else:
+        init_new_metadata()
+
+
+def init_new_metadata():
+    """
+    Initializes a clean session metadata dictionary.
+    """
+    global session_metadata
+    session_metadata = {
+        "baudrate": BAUDRATE,
+        "record_duration_s": RECORD_DURATION_S,
+        "target_samples": TARGET_SAMPLES,
+        "max_samples_before_recalibration": MAX_SAMPLES_BEFORE_RECALIBRATION,
+        "pre_buffer_s": PRE_BUFFER_S,
+        "post_buffer_s": POST_BUFFER_S,
+        "recalibrations": [],
+        "energy_distributions": []
+    }
+
+
+def save_metadata(gesture_name: str, session_name: str):
+    """
+    Saves current session metadata to recording_session.json.
+    """
+    meta_file = get_session_metadata_file(gesture_name, session_name)
+    meta_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(meta_file, "w", encoding="utf-8") as f:
+        json.dump(session_metadata, f, indent=2, ensure_ascii=False)
+
+
+def get_next_calibration_filepath(gesture_name: str, session_name: str) -> tuple[Path, int]:
+    """
+    Returns the path and index of the next sequential calibration file.
+    """
+    idx = len(session_metadata.get("recalibrations", []))
+    cal_file = get_calibration_file(gesture_name, session_name, idx)
+    return cal_file, idx
+
+
+def get_next_energy_distribution_filepath(gesture_name: str, session_name: str) -> tuple[Path, int]:
+    """
+    Returns the path and index of the next sequential energy distribution file.
+    """
+    from data_fusion_project.core.paths import get_session_dir
+    idx = len(session_metadata.get("energy_distributions", []))
+    session_dir = get_session_dir(gesture_name, session_name)
+    dist_file = session_dir / f"energy_distribution_{idx}.csv"
+    return dist_file, idx
+
+
+
 # ======================================================================================================================
 # Recording Helpers
 # ======================================================================================================================
@@ -141,7 +214,7 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     # Pre-buffer recording silently
     time.sleep(PRE_BUFFER_S)
 
-    completed_status = ui.progress_bar(duration_s, label="Aufnahme: ", color=Style.SUCCESS, stop_session=stop_session)
+    completed_status = ui.progress_bar(duration_s, label="Recording: ", color=Style.SUCCESS, stop_session=stop_session)
 
     # Post-buffer recording silently
     time.sleep(POST_BUFFER_S)
@@ -181,7 +254,7 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     df1 = pd.DataFrame(snapshot1)
     df2 = pd.DataFrame(snapshot2)
 
-    with ui.spinner("Verarbeite und synchronisiere Sensordaten..."):
+    with ui.spinner("Processing and synchronizing sensor data..."):
         _merged, valid_windows = process_stream(df1, df2, window_sz=target_samples, max_diff_us=MAX_SYNC_DIFF_US, freq_hz=100, center_gesture=True)
 
     if not valid_windows:
@@ -193,7 +266,7 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     received_counts['IMU1'] += len(snapshot1)
     received_counts['IMU2'] += len(snapshot2)
 
-    # Speichern des ersten validen Fensters
+    # Save the first valid window
     save_df = valid_windows[0].copy()
     save_df = save_df.drop(columns=['sync_time_us'], errors='ignore')
 
@@ -204,12 +277,15 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     filename = Path(filename)
     filename.parent.mkdir(parents=True, exist_ok=True)
     save_df.to_csv(filename, index=False)
-    ui.success(f"Datei erfolgreich gespeichert: {filename.name}")
+    ui.success(f"File saved successfully: {filename.name}")
 
-    # Plot speichern
-    if PLOT_EVERY_SAMPLE:
+    # Save plot
+    is_calibration = "calibration" in filename.name
+    should_plot = PLOT_CALIBRATION_RECORDING if is_calibration else PLOT_EVERY_SAMPLE
+    if should_plot:
         plot_data(save_df, save_path=filename.with_suffix('.png'))
     return True
+
 
 
 # ======================================================================================================================
@@ -223,24 +299,24 @@ def handle_pause(last_csv, last_png, paused_during_recording):
     :param: paused_during_recording (bool): flag if paused mid-run.
     :return: action (str): selected action ('resume', 'stop', or 'deleted').
     """
-    ui.info("\n=== AUFNAHME PAUSIERT ===")
+    ui.info("\n=== RECORDING PAUSED ===")
     if paused_during_recording:
-        ui.info("Aktuelles (unvollständiges) Sample wurde verworfen.")
+        ui.info("Current (incomplete) sample was discarded.")
         
     if last_csv and last_csv.exists():
-        ui.info(f"Letztes gespeichertes Sample: {last_csv.name}")
-        ui.info("Drücke [d] um dieses Sample zu löschen.")
+        ui.info(f"Last saved sample: {last_csv.name}")
+        ui.info("Press [d] to delete this sample.")
     else:
-        ui.info("Kein gespeichertes Sample zum Löschen vorhanden.")
+        ui.info("No saved sample available to delete.")
         
-    ui.info("Drücke [Leertaste] zum Fortsetzen oder [Enter] zum Beenden.")
+    ui.info("Press [Space] to resume or [Enter] to stop.")
     
     ui.flush_input()
     
     while True:
         key = ui.get_key()
         if key == " ":
-            ui.success("Setze Aufnahme fort...")
+            ui.success("Resuming recording...")
             return "resume"
         elif key in ("\r", "\n"):
             return "stop"
@@ -250,12 +326,12 @@ def handle_pause(last_csv, last_png, paused_during_recording):
                     last_csv.unlink()
                     if last_png and last_png.exists():
                         last_png.unlink()
-                    ui.success(f"Gelöscht: {last_csv.name} und zugehöriger Plot.")
+                    ui.success(f"Deleted: {last_csv.name} and associated plot.")
                     return "deleted"
                 except Exception as e:
-                    ui.error(f"Fehler beim Löschen der Datei: {e}")
+                    ui.error(f"Error deleting file: {e}")
             else:
-                ui.warning("Kein Sample zum Löschen vorhanden.")
+                ui.warning("No sample available to delete.")
         time.sleep(0.05)
 
 
@@ -266,18 +342,18 @@ def handle_stop(last_csv, last_png):
     :param: last_png (Path | None): path of last saved png.
     :return: None:
     """
-    ui.info("\n=== AUFNAHME BEENDET ===")
+    ui.info("\n=== RECORDING STOPPED ===")
     if last_csv and last_csv.exists():
-        ui.info(f"Letztes gespeichertes Sample: {last_csv.name}")
-        ui.warning("Möchtest du dieses letzte Sample löschen?")
-        ui.info("Drücke [d] innerhalb von 3 Sekunden zum Löschen, oder eine andere Taste zum Überspringen...")
+        ui.info(f"Last saved sample: {last_csv.name}")
+        ui.warning("Do you want to delete this last sample?")
+        ui.info("Press [d] within 3 seconds to delete, or any other key to skip...")
         
         ui.flush_input()
         start_time = time.time()
         deleted = False
         while time.time() - start_time < 3.0:
             remaining = 3.0 - (time.time() - start_time)
-            print(f"\r  Zeit verbleibend: {remaining:.1f}s ... ", end="", flush=True)
+            print(f"\r  Time remaining: {remaining:.1f}s ... ", end="", flush=True)
             
             key = ui.get_key()
             if key == "d":
@@ -286,22 +362,22 @@ def handle_stop(last_csv, last_png):
                     if last_png and last_png.exists():
                         last_png.unlink()
                     print()
-                    ui.success(f"Gelöscht: {last_csv.name} und zugehöriger Plot.")
+                    ui.success(f"Deleted: {last_csv.name} and associated plot.")
                     deleted = True
                     break
                 except Exception as e:
                     print()
-                    ui.error(f"Fehler beim Löschen: {e}")
+                    ui.error(f"Error deleting: {e}")
                     break
             elif key is not None:
                 print()
-                ui.info("Löschen übersprungen.")
+                ui.info("Deletion skipped.")
                 break
             time.sleep(0.05)
         if not deleted:
             print()
     else:
-        ui.info("Kein gespeichertes Sample zum Löschen vorhanden.")
+        ui.info("No saved sample available to delete.")
 
 
 def input_thread(imu1, imu2, session_name):
@@ -314,50 +390,68 @@ def input_thread(imu1, imu2, session_name):
     """
     global current_gesture
 
-    ui.banner("Aufnahme-Controller", subtitle=f"Sitzung: {session_name}")
+    ui.banner("Recording Controller", subtitle=f"Session: {session_name}")
     _print_dataset_counts()
 
-    choices = list(GESTURES) + ["[Beenden]"]
+    choices = list(GESTURES) + ["[Exit]"]
 
     while running.is_set():
-        selection = ui.ask_choice("\nGeste auswählen:", choices)
+        selection = ui.ask_choice("\nSelect gesture:", choices)
 
         if selection is None or selection == len(choices) - 1:
-            logger.info("Beende Aufnahme-Schleife...")
+            logger.info("Exiting recording loop...")
             running.clear()
             break
 
         current_gesture = selection
         gesture_name = GESTURES[current_gesture]
-        ui.hr(title=f"Auswahl: {gesture_name}")
+        ui.hr(title=f"Selection: {gesture_name}")
 
-        # Prüfe Kalibrierung
-        cal_file = get_calibration_file(gesture_name, session_name)
+        # Load session metadata
+        load_or_init_metadata(gesture_name, session_name)
+
+        # Check Calibration
+        cal_file = get_calibration_file(gesture_name, session_name, index=0)
         if not cal_file.exists():
-            ui.warning(f"Keine Kalibrierung für Geste '{gesture_name}' in Sitzung '{session_name}' gefunden.")
+            ui.warning(f"No calibration found for gesture '{gesture_name}' in session '{session_name}'.")
             with ui.non_blocking_input():
-                ui.wait_for_enter("Bereit? [Enter] startet die 5s Stillstands-Kalibrierung...")
-                ui.info("Bitte halte die Sensoren für 5 Sekunden absolut still...")
+                ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+                ui.info("Please hold the sensors absolutely still for 5 seconds...")
                 success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
                 while not success:
-                    ui.error("Kalibrierung fehlgeschlagen. Versuche es erneut.")
-                    ui.wait_for_enter("Bereit? [Enter] startet die 5s Stillstands-Kalibrierung...")
-                    ui.info("Bitte halte die Sensoren für 5 Sekunden absolut still...")
+                    ui.error("Calibration failed. Please try again.")
+                    ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+                    ui.info("Please hold the sensors absolutely still for 5 seconds...")
                     success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
-            ui.success("Kalibrierung erfolgreich gespeichert!")
+            
+            # Record in metadata
+            session_metadata["recalibrations"].append({
+                "file": cal_file.name,
+                "sample_index": 0
+            })
+            save_metadata(gesture_name, session_name)
+            ui.success("Calibration successfully saved!")
+        else:
+            # Ensure it is registered in metadata if it is on disk
+            if not any(r["file"] == cal_file.name for r in session_metadata.get("recalibrations", [])):
+                session_metadata.setdefault("recalibrations", []).append({
+                    "file": cal_file.name,
+                    "sample_index": 0
+                })
+                save_metadata(gesture_name, session_name)
 
-        # Bestimme Aufnahmemodus
+        # Determine recording mode
         if gesture_name == NONE_GESTURE_NAME:
-            ui.wait_for_enter("Bereit? [Enter] startet die kontinuierliche Aufnahme...")
+            ui.wait_for_enter("Ready? Press [Enter] to start continuous recording...")
             stop_session.clear()
             record_continuous(imu1, imu2, session_name)
         else:
-            ui.wait_for_enter("Bereit? [Enter] startet die variable Aufnahmeschleife (Sample/Pause/Sample)...")
+            ui.wait_for_enter("Ready? Press [Enter] to start sample recording loop...")
             stop_session.clear()
             record_samples_loop(imu1, imu2, session_name)
             
         recording.clear()
-        ui.success("Aufnahmesitzung beendet.")
+        ui.success("Recording session finished.")
 
 
 def _trim_before(buf, cutoff_us):
@@ -399,9 +493,9 @@ def record_continuous(imu1, imu2, session_name):
     local_cnt1 = 0
     local_cnt2 = 0
 
-    logger.info("KONTINUIERLICHE AUFNAHME '%s' (Fenster %ss, Überlappung %s%%)",
+    logger.info("CONTINUOUS RECORDING '%s' (window %ss, overlap %s%%)",
                 gesture_name, RECORD_DURATION_S, OVERLAP_RATIO*100)
-    ui.info("Drücke [Leertaste] oder [Enter] zum Stoppen...")
+    ui.info("Press [Space] or [Enter] to stop...")
 
     saved = 0
     next_start_us = None
@@ -441,7 +535,7 @@ def record_continuous(imu1, imu2, session_name):
                 rec_file = get_next_recording_file(gesture_name, session_name)
                 _save_window(window, rec_file, verbose=False, plot=False)
                 saved += 1
-                print(f"\r  Überlappende 'none'-Fenster gespeichert: {saved}", end="", flush=True)
+                print(f"\r  Overlapping 'none' windows saved: {saved}", end="", flush=True)
 
             next_start_us += advance_us
             _trim_before(local_buf1, next_start_us)
@@ -451,7 +545,7 @@ def record_continuous(imu1, imu2, session_name):
     global received_counts
     received_counts['IMU1'] += local_cnt1
     received_counts['IMU2'] += local_cnt2
-    logger.info("Gespeichert: %d überlappende Fenster für '%s'", saved, gesture_name)
+    logger.info("Saved: %d overlapping windows for '%s'", saved, gesture_name)
     _print_received_counts()
     _print_dataset_counts()
 
@@ -473,6 +567,20 @@ def record_samples_loop(imu1, imu2, session_name):
     last_saved_png = None
     
     with ui.non_blocking_input():
+        # First progress bar after starting loop (or after calibration) should be a Pause to give the user time to set up
+        pause_status = ui.progress_bar(PAUSE_DURATION_S, label="Pause:     ", color=Style.ERROR, stop_session=stop_session)
+        if pause_status == "aborted":
+            return
+        elif pause_status == "space":
+            action = handle_pause(None, None, paused_during_recording=False)
+            while action == "deleted":
+                action = handle_pause(None, None, paused_during_recording=False)
+            if action == "stop":
+                return
+        elif pause_status == "enter":
+            handle_stop(None, None)
+            return
+
         while not stop_session.is_set():
             if not imu1.running or not imu2.running:
                 logger.error("IMU thread stopped during sample loop. Aborting.")
@@ -481,7 +589,7 @@ def record_samples_loop(imu1, imu2, session_name):
             sample_idx += 1
             rec_file = get_next_recording_file(gesture_name, session_name)
 
-            logger.info("Sample %d ('%s') — Starte Aufnahme...", sample_idx, gesture_name)
+            logger.info("Sample %d ('%s') — Starting recording...", sample_idx, gesture_name)
             
             # Clear reader queues before starting
             imu1.get_data()
@@ -492,7 +600,7 @@ def record_samples_loop(imu1, imu2, session_name):
             # Pre-buffer recording silently
             time.sleep(PRE_BUFFER_S)
 
-            rec_status = ui.progress_bar(RECORD_DURATION_S, label="Aufnahme: ", color=Style.SUCCESS, stop_session=stop_session)
+            rec_status = ui.progress_bar(RECORD_DURATION_S, label="Recording: ", color=Style.SUCCESS, stop_session=stop_session)
 
             # Post-buffer recording silently
             time.sleep(POST_BUFFER_S)
@@ -548,7 +656,7 @@ def record_samples_loop(imu1, imu2, session_name):
             df1 = pd.DataFrame(snapshot1)
             df2 = pd.DataFrame(snapshot2)
 
-            with ui.spinner("Verarbeite und synchronisiere Sensordaten..."):
+            with ui.spinner("Processing and synchronizing sensor data..."):
                 _merged, valid_windows = process_stream(df1, df2, window_sz=TARGET_SAMPLES, max_diff_us=MAX_SYNC_DIFF_US, freq_hz=100, center_gesture=True)
 
             if not valid_windows:
@@ -570,7 +678,7 @@ def record_samples_loop(imu1, imu2, session_name):
             rec_file = Path(rec_file)
             rec_file.parent.mkdir(parents=True, exist_ok=True)
             save_df.to_csv(rec_file, index=False)
-            ui.success(f"Datei erfolgreich gespeichert: {rec_file.name}")
+            ui.success(f"File saved successfully: {rec_file.name}")
 
             last_saved_csv = rec_file
             last_saved_png = rec_file.with_suffix('.png') if PLOT_EVERY_SAMPLE else None
@@ -580,23 +688,29 @@ def record_samples_loop(imu1, imu2, session_name):
                 
             saved += 1
 
-            # Check for re-calibration trigger after 50 successfully recorded samples
-            if saved > 0 and saved % 50 == 0:
-                save_and_plot_energy_distribution(gesture_name, session_name)
-                ui.warning(f"\n{saved} Samples aufgenommen. Erneute Kalibrierung erforderlich!")
-                cal_file = get_calibration_file(gesture_name, session_name)
-                ui.wait_for_enter("Bereit? [Enter] startet die 5s Stillstands-Kalibrierung...")
-                ui.info("Bitte halte die Sensoren für 5 Sekunden absolut still...")
+            # Check for re-calibration trigger after MAX_SAMPLES_BEFORE_RECALIBRATION successfully recorded samples
+            if saved > 0 and saved % MAX_SAMPLES_BEFORE_RECALIBRATION == 0:
+                save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
+                ui.warning(f"\n{saved} samples recorded. Re-calibration required!")
+                cal_file, cal_idx = get_next_calibration_filepath(gesture_name, session_name)
+                ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+                ui.info("Please hold the sensors absolutely still for 5 seconds...")
                 success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
                 while not success:
-                    ui.error("Kalibrierung fehlgeschlagen. Versuche es erneut.")
-                    ui.wait_for_enter("Bereit? [Enter] startet die 5s Stillstands-Kalibrierung...")
-                    ui.info("Bitte halte die Sensoren für 5 Sekunden absolut still...")
+                    ui.error("Calibration failed. Please try again.")
+                    ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+                    ui.info("Please hold the sensors absolutely still for 5 seconds...")
                     success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
-                ui.success("Kalibrierung erfolgreich gespeichert!")
+                
+                session_metadata["recalibrations"].append({
+                    "file": cal_file.name,
+                    "sample_index": saved
+                })
+                save_metadata(gesture_name, session_name)
+                ui.success("Calibration successfully saved!")
 
             # Pause Phase
-            pause_status = ui.progress_bar(PAUSE_DURATION_S, label="Pause:    ", color=Style.ERROR, stop_session=stop_session)
+            pause_status = ui.progress_bar(PAUSE_DURATION_S, label="Pause:     ", color=Style.ERROR, stop_session=stop_session)
             
             if pause_status == "aborted":
                 break
@@ -617,9 +731,9 @@ def record_samples_loop(imu1, imu2, session_name):
                 handle_stop(last_saved_csv, last_saved_png)
                 break
 
-    # Berechne und plote Bewegungsenergie-Verteilung beim Beenden der Aufnahme
-    logger.info("Gespeichert: %d Samples für '%s'", saved, gesture_name)
-    save_and_plot_energy_distribution(gesture_name, session_name)
+    # Calculate and plot motion energy distribution on loop finish
+    logger.info("Saved: %d samples for '%s'", saved, gesture_name)
+    save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
     _print_received_counts()
     _print_dataset_counts()
 
@@ -665,7 +779,7 @@ def _save_window(window_df, filename, verbose=True, plot=False):
     filename.parent.mkdir(parents=True, exist_ok=True)
     save_df.to_csv(filename, index=False)
     if verbose:
-        ui.success(f"Datensatz gespeichert unter: {filename.name}")
+        ui.success(f"Dataset saved to: {filename.name}")
     if plot and PLOT_EVERY_SAMPLE:
         plot_data(save_df, save_path=filename.with_suffix('.png'))
     return filename
@@ -679,7 +793,7 @@ def _print_received_counts():
     with _buffer_lock:
         n1 = received_counts['IMU1']
         n2 = received_counts['IMU2']
-    logger.info("Empfangene Datenpakete in dieser Session: IMU1 = %d, IMU2 = %d", n1, n2)
+    logger.info("Data packets received in this session: IMU1 = %d, IMU2 = %d", n1, n2)
 
 
 def _print_dataset_counts():
@@ -687,7 +801,7 @@ def _print_dataset_counts():
     Prints to UI the number of saved samples per gesture.
     :return: None:
     """
-    ui.hr(title="Gespeicherte Datensätze pro Geste")
+    ui.hr(title="Saved datasets per gesture")
     total = 0
     for label in GESTURES:
         gesture_dir = DATA_DIR / label
@@ -698,17 +812,18 @@ def _print_dataset_counts():
         total += count
         ui.kv([(label, str(count))])
     ui.hr()
-    logger.info("Gesamtanzahl valider Datensätze: %d", total)
+    logger.info("Total number of valid datasets: %d", total)
 
 
 # ======================================================================================================================
 # Analysis & Plotting
 # ======================================================================================================================
-def save_and_plot_energy_distribution(gesture_name, session_name):
+def save_and_plot_energy_distribution(gesture_name, session_name, sample_index=None):
     """
     Computes statistical motion energy, saves it as CSV, and plots PNG.
     :param: gesture_name (str): name of gesture.
     :param: session_name (str): current session directory name.
+    :param: sample_index (int | None): current sample index.
     :return: None:
     """
     if not PLOT_MOVEMENT_DISTRIBUTION:
@@ -718,12 +833,12 @@ def save_and_plot_energy_distribution(gesture_name, session_name):
     session_dir = get_session_dir(gesture_name, session_name)
     
     # Find all sample CSVs (excluding calibration and energy_distribution)
-    files = [f for f in session_dir.glob("*.csv") if f.name not in ("calibration.csv", "energy_distribution.csv")]
+    files = sorted([f for f in session_dir.glob("*.csv") if f.stem.isdigit() and len(f.stem) == 5])
     if not files:
-        logger.warning("Keine Samples für Energie-Verteilungs-Analyse in %s gefunden.", session_dir)
+        logger.warning("No samples found for energy distribution analysis in %s.", session_dir)
         return
 
-    logger.info("Berechne Bewegungsenergie-Verteilung für '%s' (%d Dateien)...", gesture_name, len(files))
+    logger.info("Calculating motion energy distribution for '%s' (%d files)...", gesture_name, len(files))
 
     imu1_acc_runs = []
     imu1_gyr_runs = []
@@ -754,7 +869,7 @@ def save_and_plot_energy_distribution(gesture_name, session_name):
             imu2_acc_runs.append(imu2_acc)
             imu2_gyr_runs.append(imu2_gyr)
         except Exception as e:
-            logger.error("Fehler beim Lesen von %s: %s", f.name, e)
+            logger.error("Error reading %s: %s", f.name, e)
 
     if not imu1_acc_runs:
         return
@@ -777,15 +892,16 @@ def save_and_plot_energy_distribution(gesture_name, session_name):
         'IMU2_gyr_std': np.std(imu2_gyr_runs, axis=0),
     })
 
-    dist_csv = session_dir / "energy_distribution.csv"
+    # Get sequential filepath
+    dist_csv, dist_idx = get_next_energy_distribution_filepath(gesture_name, session_name)
     dist_df.to_csv(dist_csv, index=False)
-    ui.success(f"Bewegungsenergie-Verteilung gespeichert: {dist_csv.name}")
+    ui.success(f"Motion energy distribution saved: {dist_csv.name}")
 
     # Plot creation (non-interactive, Agg)
     plt.close('all')
     t = np.linspace(0, RECORD_DURATION_S, TARGET_SAMPLES)
     fig, axs = plt.subplots(2, 2, figsize=(14, 8), sharex=True)
-    fig.suptitle(f"Bewegungsenergie-Verteilung: '{gesture_name}' ({len(files)} Samples)", fontsize=14, fontweight='bold')
+    fig.suptitle(f"Motion Energy Distribution: '{gesture_name}' ({len(files)} Samples)", fontsize=14, fontweight='bold')
 
     # IMU1 Acc
     axs[0, 0].plot(t, dist_df['IMU1_acc_mean'], color='#1f77b4', label='Mean')
@@ -824,10 +940,17 @@ def save_and_plot_energy_distribution(gesture_name, session_name):
     axs[1, 1].legend()
 
     plt.tight_layout()
-    dist_png = session_dir / "energy_distribution.png"
+    dist_png = dist_csv.with_suffix('.png')
     plt.savefig(dist_png)
     plt.close(fig)
-    ui.success(f"Plot der Bewegungsenergie-Verteilung gespeichert: {dist_png.name}")
+    ui.success(f"Plot of motion energy distribution saved: {dist_png.name}")
+
+    # Record in metadata
+    session_metadata["energy_distributions"].append({
+        "file": dist_csv.name,
+        "sample_index": sample_index if sample_index is not None else len(files)
+    })
+    save_metadata(gesture_name, session_name)
 
 
 def plot_data(df, save_path=None):
@@ -898,8 +1021,8 @@ def main():
     port_imu1 = device_resolution.resolve_device_port("imu1")
     port_imu2 = device_resolution.resolve_device_port("imu2")
 
-    ui.hr(title="Aufnahmesitzung konfigurieren")
-    session_name = ui.ask("Bitte Aufnahmesitzung (Recording Session Name) eingeben [Standard: session_<timestamp>]:")
+    ui.hr(title="Configure Recording Session")
+    session_name = ui.ask("Please enter recording session name [Default: session_<timestamp>]:")
     if not session_name:
         session_name = f"session_{int(time.time())}"
 
@@ -909,7 +1032,7 @@ def main():
     imu1.start()
     imu2.start()
 
-    ui.info("Warte auf Initialisierung der Sensoren (2s)...")
+    ui.info("Waiting for sensor initialization (2s)...")
     time.sleep(2.0)
 
     control_thread = threading.Thread(target=input_thread, args=(imu1, imu2, session_name), daemon=True)

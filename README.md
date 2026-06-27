@@ -4,15 +4,15 @@
 ## Team
 
 - Lucas Horn: `hornlu95907@th-nuernberg.de`
-- Jan Tichner: `tischnerja95752@th-nuernberg.de`
+- Jan Tischner: `tischnerja95752@th-nuernberg.de`
 
 
 ---
 
 
-## Hardware Setup
+## Project description
 
-### Sensor board:
+### IMU Sensor boards:
 
 - We are using two `XIAOML Kit` devices: Designed by Professor Vijay Janapa Reddi (Harvard University), author of the Machine Learning Systems textbook. One at the wrist and one at the index finger.
 - What's inside: XIAO ESP32-S3 Sense, CAM • IMU • SD Toolkit
@@ -22,29 +22,25 @@
   - Builders: mlsysbook.ai/kits
   - Developers: github.com/mlsysbook
 
-### Setup:
+### Hardware Setup:
 
 - The two XIAOML Kits are directly conncted to the computer via USB-C.
 - IMU Data will be streamed unprocessed via USB-C-Serial to the computer.
 - All processing, fusion, filtering, and ML will run on the Computer. 
 
-
----
-
-
-## Project description
-
-**Setup:**
+### Hardware Mounting:
 - One XIAOML Kit on the wrist (IMU Data).
 - One XIAOML Kit on the tip of the index finger (Camera Data).
 - Orientation usb-c-plug downward and backward.
 - Mounted on right hand.
   
-**Goal:**
+### Goal:
+
 - Recognize arm- and hand-gestures with wrist worn IMU Sensor.
 - Demonstation: Control power point with hand gestures.
 
-**Possible Extension:**
+### Possible Extension:
+
 - Use finger as an air mouse to interact with the computer.
 - Demonstration: Cotrol the power point laser pointer by hand movement.
 
@@ -110,29 +106,55 @@ In the dataset an classifiers the naming scheme will be as follows:
 
 ## Project Strucure 
 
+### Data Structure
+
 ```
 data_fusion_project/
 ├── data/
 │   ├── <guesture name>/
 │   │   │   ├── <recording_session>/
-│   │   │   │   ├── calibration.csv # 5 second recording of no movement to establish sensor drift
+│   │   │   │   ├── recording_session.json # properties of the particular recording session
+│   │   │   │   ├── calibration_<index>.csv # 5 second recording of no movement to establish sensor drift
+│   │   │   │   ├── energy_distribution_<index>.csv # motion energy distribution
 │   │   │   │   ├── 00001.csv # first recording of the gesture
 │   │   │   │   ├── 00002.csv # second recording of the gesture
-│   │   │   │   └── 
+│   │   │   │   └── ...
 ```
 
+### Data set structure
 
----
-
-
-## Data set structure
-
-Column structure of `<id>.csv` or `calibration.csv` files (they only contain raw data):
+Column structure of `<id>.csv` or `calibration_<index>.csv` files (they only contain raw data):
 
 ```csv
 IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,IMU2_accZ,IMU2_gyrX,IMU2_gyrY,IMU2_gyrZ
 ```
 
+### Recording Session Properties Structure
+
+```json
+{
+  "baudrate": 115200,
+  "record_duration_s": 1.5,
+  "target_samples": 150,
+  "max_samples_before_recalibration": 20,
+  "pre_buffer_s": 0.05,
+  "post_buffer_s": 0.05,
+  "recalibrations": [
+    {
+      "file": "calibration_<index>.csv", # IMU static recording used to calculate sensor drift for normalization for the following MAX_SAMPLES_BEFORE_RECALIBRATION samples.
+      "sample_index": (<index> * max_samples_before_recalibration) # index of the first sample of this calibration window.
+    },
+    ...
+  ],
+  "energy_distributions": [
+    {
+      "file": "energy_distribution_<index>.csv", # Calculated motion energy distribution for the last MAX_SAMPLES_BEFORE_RECALIBRATION samples.
+      "sample_index": ((<index> + 1) * max_samples_before_recalibration) # index of the last sample of this energy distribution calculation window.
+    },
+    ...
+  ]
+}
+```
 
 ---
 
@@ -141,8 +163,8 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
 Extracts trainings data and OPTIONALLY preprocesses it providing different preprocessing options or OPTIONALLY calculates features:
 
 - Calibration: 
-  - At the beginning of each recording:
-    - 3 seconds still pose:
+  - Periodic static calibration (every `MAX_SAMPLES_BEFORE_RECALIBRATION` samples):
+    - 5 seconds still pose:
       - wrist mounted normally
       - index finger extended or relaxed in defined pose
   - Estimate:
@@ -171,7 +193,7 @@ through four declarative stages and returns CNN-ready NumPy arrays.
 
 | Stage | Module | What it does |
 |-------|--------|--------------|
-| Calibration | `calibration.py` | Estimates gyro zero-bias, gravity magnitude/direction and acc bias from each session's `calibration.csv`, then applies `gyro - bias` and `acc / g`. |
+| Calibration | `calibration.py` | Estimates gyro zero-bias, gravity magnitude/direction and acc bias from each session's `calibration_<index>.csv`, then applies `gyro - bias` and `acc / g`. |
 | Filtering | `filters.py` | Zero-phase Butterworth low-/high-/band-pass (scipy `sosfiltfilt`) plus gravity removal (low-pass split into gravity + linear acceleration). |
 | Orientation | `orientation.py` | Computes roll/pitch from the *pre-filtered* signals and refines them with a fusion filter: `accel`, `gyro`, **`complementary`** or **`kalman`** (2-state, estimates gyro bias). |
 | Features | `features.py` | Assembles the `(T, C)` channel matrix (raw acc/gyro, inter-IMU differences, magnitudes, roll/pitch) and optional scalar features (cross-correlation, statistics). |
@@ -217,29 +239,38 @@ python scripts/build_dataset.py --save data/cache/dataset.npz   # reload via Ges
 ---
 
 
-## CNN Experiments
-
-
----
-
-
-## Pitch
-
-- 5 min (auf keinen Fall mehr).
-- 4 Folien.
-  - 1. Team und Problem.
-  - 2./3. Folie Implementierungsdetails.
-  - 4. Folie: Gefilmte Demo (keine Live Demo).
-- Schöne Animationen sind wichtig!
-- Code in Git Repo der Fak Inf ablegen mit Axenie als Maintainer.
-- Folien in Repo ablegen (als .pdf).
-- Alle Medien (also auch Präsi Videos) auf Git ablegen.
-- Mündlich darauf vorbereiten, Fragen zum Projekt zu beantworten (auch kritische).
-- Abgabe: 1. Juli 23:59. Kein Commit mehr danach.
+## CNN Training
 
 
 
 ---
+
+## Real time classification pipeline
+
+### sliding window setup:
+
+- sampling rate: 100 Hz
+- window length: 1.5 s
+- stride: 100–200 ms
+- prediction rate: 5–10 Hz
+
+### Runtime
+
+1. Receive samples from wrist and index.
+2. Resample both to common 100 Hz time grid.
+3. Append to synchronized ring buffer.
+4. Every 100–200 ms:
+   - extract last 1.0 s window
+   - normalize using training scaler
+   - classify
+   - smooth probabilities
+   - pass to state machine
+5. If action is triggered:
+   - send keyboard/mouse event
+
+
+---
+
 
 
 ## `data_fusion_project` python module

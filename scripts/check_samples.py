@@ -46,8 +46,8 @@ def check_samples():
     anomaly_count = 0
 
     for csv_file in csv_files:
-        # Skip calibration and distribution files
-        if csv_file.name in ("calibration.csv", "energy_distribution.csv"):
+        # Only check gesture samples (5-digit zero-padded numbers like 00001.csv)
+        if not (csv_file.stem.isdigit() and len(csv_file.stem) == 5):
             continue
 
         try:

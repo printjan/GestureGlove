@@ -7,8 +7,10 @@ Directory layout consumed (produced by ``scripts/record_data.py``)::
     data/
     └── <gesture>/
         └── <session>/
-            ├── calibration.csv   # ~5 s stillness, used for calibration
-            ├── 00001.csv         # one gesture window (150 rows = 1.5 s @ 100 Hz)
+            ├── recording_session.json           # properties of the session
+            ├── calibration_<number>.csv         # ~5 s stillness, used for calibration
+            ├── energy_distribution_<number>.csv  # motion energy distribution
+            ├── 00001.csv                        # one gesture window (150 rows = 1.5 s @ 100 Hz)
             └── ...
 
 For every window the pipeline runs: load -> calibrate -> filter -> orientation ->
@@ -328,17 +330,42 @@ def load_dataset(config: PipelineConfig | None = None, data_dir: str | Path | No
             continue
         n_sessions += 1
 
-        # Estimate calibration once per session (or fall back to identity).
-        cal_file = session_dir / "calibration.csv"
-        if cal_file.exists():
-            profile = calib.estimate_calibration(cal_file, config.calibration)
-        else:
-            logger.warning("No calibration.csv in %s; using identity calibration.", session_dir)
-            profile = calib.identity_profile()
+        # Load session metadata recording_session.json (strict implementation, no fallback)
+        metadata_file = session_dir / "recording_session.json"
+        if not metadata_file.exists():
+            raise FileNotFoundError(f"Missing required session metadata file: {metadata_file}")
+
+        import json
+        with open(metadata_file, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+
+        profiles_by_sample = {}
+        recalibrations = metadata.get("recalibrations", [])
+        if not recalibrations:
+            raise ValueError(f"No recalibrations found in session metadata: {metadata_file}")
+
+        for entry in recalibrations:
+            cal_filename = entry["file"]
+            sample_idx = entry["sample_index"]
+            cal_path = session_dir / cal_filename
+            if not cal_path.exists():
+                raise FileNotFoundError(f"Calibration file '{cal_filename}' listed in metadata does not exist in {session_dir}")
+            try:
+                profiles_by_sample[sample_idx] = calib.estimate_calibration(cal_path, config.calibration)
+            except Exception as exc:
+                logger.error("Failed to estimate calibration from %s: %s", cal_path, exc)
+                raise exc
 
         group = session_dir.name if group_by == "session" else f"{gesture}/{session_dir.name}"
 
         for csv_path in sample_files:
+            # Resolve the closest calibration strictly before this sample index
+            sample_stem = csv_path.stem
+            sample_idx = int(sample_stem) if sample_stem.isdigit() else 0
+            matching_scs = [sc for sc in profiles_by_sample.keys() if sc < sample_idx]
+            active_sc = max(matching_scs) if matching_scs else min(profiles_by_sample.keys())
+            profile = profiles_by_sample[active_sc]
+
             try:
                 df = pd.read_csv(csv_path)
             except Exception as exc:

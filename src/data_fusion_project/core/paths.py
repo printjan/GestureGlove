@@ -102,11 +102,18 @@ def get_session_dir(gesture_name: str, session_name: str) -> Path:
     return get_gesture_dir(gesture_name) / session_name
 
 
-def get_calibration_file(gesture_name: str, session_name: str) -> Path:
+def get_calibration_file(gesture_name: str, session_name: str, index: int = 0) -> Path:
     """
     Get the path to the calibration file of a session.
     """
-    return get_session_dir(gesture_name, session_name) / "calibration.csv"
+    return get_session_dir(gesture_name, session_name) / f"calibration_{index}.csv"
+
+
+def get_session_metadata_file(gesture_name: str, session_name: str) -> Path:
+    """
+    Get the path to the recording session configuration JSON metadata file.
+    """
+    return get_session_dir(gesture_name, session_name) / "recording_session.json"
 
 
 def get_next_recording_file(gesture_name: str, session_name: str) -> Path:

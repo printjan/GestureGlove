@@ -159,6 +159,15 @@ Analyse the project. Then Look at our persumed process - Build a Detailed Descri
 ---
 
 
+## Features
+
+pitch, roll, yaw, acc_mag, gyro_mag, sqrt(ax²+ay²+az²), sqrt(gx²+gy²+gz²), |a|, |g|, d(ax)/dt, d(ay)/dt, d(az)/dt
+
+
+
+---
+
+
 
 # Python Environment
 
@@ -229,6 +238,42 @@ conda activate data_fusion_env_1
 - Alle Medien (also auch Präsi Videos) auf Git ablegen.
 - Mündlich darauf vorbereiten, Fragen zum Projekt zu beantworten (auch kritische).
 - Abgabe: 1. Juli 23:59. Kein Commit mehr danach.
+
+
+
+---
+
+
+
+# Current Issues
+
+
+---
+
+
+
+## Recording Pipeline
+
+
+
+--- 
+
+
+
+## CNN Implementation
+
+
+
+
+---
+
+
+## Real time inference
+
+
+### Real time calibration
+
+Strategy idea: Because the drift is dynamic and non-linear, a single initial calibration is insufficient. To keep the demo seamless without forcing the user to pause manually, we should implement Zero-Velocity Updates (ZUPT) in the background: when the hand is resting (std dev is very low for a few seconds), the system should automatically update the gyroscope bias registers in real-time. How it works: The system continuously monitors the standard deviation of gyroscope and accelerometer signals. When it detects a sustained still window (e.g. hand resting on the table for 2 seconds where std < 3.0 dps and < 0.025g), it automatically recalculates the mean zero-bias and updates the calibration profile registers in the background.
 
 
 

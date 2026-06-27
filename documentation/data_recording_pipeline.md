@@ -101,3 +101,15 @@ To ensure that only high-quality data is recorded, the pipeline aborts immediate
 * **Sync Check:** If the nearest-neighbor discrepancy exceeds $10\text{ ms}$ inside the centered window, the session aborts.
 * **Disconnect Monitoring:** The main thread monitors the states of `control_thread`, `imu1.running`, and `imu2.running`. If a thread terminates or a serial read raises an exception, the script immediately propagates the failure, logs an `ERROR`, and exits with `exit code 1`.
 * **Offline Sample Auditing:** The [check_samples.py](../scripts/check_samples.py) script scans the data directory recursively to verify that all finalized gesture CSVs contain exactly 150 rows, flagging any too short or too long samples.
+
+---
+
+## 8. Periodic Re-calibration & Drift Auditing
+
+To correct for sensor/gyroscope bias drift during long recording sessions, the pipeline forces a re-calibration pose periodically:
+* **Threshold Flag (`MAX_SAMPLES_BEFORE_RECALIBRATION`):** Defines the maximum number of gesture samples recorded before requiring a new calibration file (default: `20` samples).
+* **Plotting Flag (`PLOT_CALIBRATION_RECORDING`):** Boolean flag (default: `True`) deciding if a PNG plot of the calibration recording is saved alongside the CSV file.
+* **Non-Overwriting Re-calibration Pose:** When the threshold is reached, the recording loop pauses automatically, saves the session's motion energy distribution, and prompts the user to perform a 5-second stillness calibration.
+* **0-Indexed Sequential Naming:** All calibrations and motion energy distributions are numbered sequentially starting at `0`. The initial calibration is saved as `calibration_0.csv`. When periodic recalibration or energy distribution plotting is triggered, files are saved as `calibration_<number>.csv`/`.png` and `energy_distribution_<number>.csv`/`.png` respectively. Their exact association with recording sample indices is tracked in the session's `recording_session.json` metadata file.
+* **Calibration Quality Analysis:** The offline Jupyter Notebook `scripts/analyze_calibration_data.ipynb` audits stillness quality (detecting and flagging movement by analyzing standard deviation thresholds) and tracks zero-bias drift profiles across multiple calibrations within each recording session.
+
