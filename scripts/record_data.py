@@ -99,7 +99,7 @@ NONE_GESTURE_NAME = "none"
 OVERLAP_RATIO = 0.5
 
 # Pause zwischen einzelnen Samples bei allen Gesten außer 'none'.
-PAUSE_DURATION_S = RECORD_DURATION_S
+PAUSE_DURATION_S = 1
 
 # Maximal erlaubter Zeitversatz zwischen IMU1 und IMU2 innerhalb eines Fensters.
 MAX_SYNC_DIFF_US = 10000
