@@ -50,8 +50,9 @@ Top-level acquisition parameters plus the four nested stage configs.
 | Field | Type | Default | Options / Range | What it does |
 |-------|------|---------|-----------------|--------------|
 | `sample_rate_hz` | float | `100.0` | > 0 | Sampling rate of the recordings. Used for filter cutoffs and angle integration. Must match the recording rate (100 Hz). |
-| `window_size` | int | `150` | > 0 | Fixed number of time steps `T` per window. 150 = 1.5 s @ 100 Hz. Defines the `T` axis of the output tensor `X` of shape `(N, T, C)`. |
-| `pad_mode` | str | `"edge"` | `"edge"`, `"zero"` | How windows shorter than `window_size` are padded: `"edge"` repeats the last row, `"zero"` pads with zeros. Longer windows are always truncated. |
+| `window_size` | int | `150` | > 0 | Fixed number of time steps `T` per window. For active gestures, a 150-sample window is sliced from the raw 1.74-second CSV starting at the index defined in the companion `.txt` file. Defines the `T` axis of the output tensor `X`. |
+| `pad_mode` | str | `"edge"` | `"edge"`, `"zero"` | How windows shorter than `window_size` are padded. Note that under the strict start-index companion scheme, gesture samples are cropped to exactly 150 samples without needing padding. |
+| `jitter_range` | int | `0` | ≥ 0 | Maximum sample shift for translation jitter augmentation during dataset loading. Shifting `start_idx` by a random offset in `[-jitter_range, jitter_range]` clipped to raw CSV limits. |
 | `calibration` | `CalibrationConfig` | defaults | see §2 | Calibration stage settings. |
 | `filters` | `FilterConfig` | defaults | see §3 | Filtering stage settings. |
 | `orientation` | `OrientationConfig` | defaults | see §4 | Orientation (roll/pitch) stage settings. |

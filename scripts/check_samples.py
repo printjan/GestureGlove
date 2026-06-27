@@ -56,11 +56,24 @@ def check_samples():
             row_count = len(df)
             checked_count += 1
 
-            if row_count != 150:
+            txt_file = csv_file.with_suffix('.txt')
+            if not txt_file.exists():
                 anomaly_count += 1
-                # Output relative path for clean display
                 relative_path = csv_file.relative_to(DATA_DIR)
-                print(f"[ANOMALY] {relative_path} has {row_count} datapoints (Expected: exactly 150).")
+                print(f"[ANOMALY] {relative_path} is missing its companion .txt start index file.")
+            else:
+                try:
+                    with open(txt_file, "r") as tf:
+                        start_idx = int(tf.read().strip())
+                    sliced_len = len(df.iloc[start_idx : start_idx + 150])
+                    if sliced_len != 150:
+                        anomaly_count += 1
+                        relative_path = csv_file.relative_to(DATA_DIR)
+                        print(f"[ANOMALY] {relative_path} sliced length is {sliced_len} instead of 150. Start index: {start_idx}, total rows: {row_count}.")
+                except Exception as e:
+                    anomaly_count += 1
+                    relative_path = csv_file.relative_to(DATA_DIR)
+                    print(f"[ANOMALY] {relative_path} failed to read/parse companion .txt file: {e}")
 
         except Exception as e:
             print(f"[ERROR] Failed to read {csv_file.name}: {e}")

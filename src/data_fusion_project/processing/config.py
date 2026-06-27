@@ -176,6 +176,7 @@ class PipelineConfig:
     sample_rate_hz: float = 100.0
     window_size: int = 150
     pad_mode: str = "edge"
+    jitter_range: int = 0
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     filters: FilterConfig = field(default_factory=FilterConfig)
     orientation: OrientationConfig = field(default_factory=OrientationConfig)

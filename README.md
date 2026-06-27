@@ -113,11 +113,15 @@ data_fusion_project/
 ├── data/
 │   ├── <guesture name>/
 │   │   │   ├── <recording_session>/
-│   │   │   │   ├── recording_session.json # properties of the particular recording session
-│   │   │   │   ├── calibration_<index>.csv # 5 second recording of no movement to establish sensor drift
-│   │   │   │   ├── energy_distribution_<index>.csv # motion energy distribution
-│   │   │   │   ├── 00001.csv # first recording of the gesture
-│   │   │   │   ├── 00002.csv # second recording of the gesture
+│   │   │   │   ├── recording_session.json           # properties of the particular recording session
+│   │   │   │   ├── calibration_<index>.csv          # 5 second recording of no movement to establish sensor drift
+│   │   │   │   ├── calibration_<index>.png          # plot of the static calibration recording
+│   │   │   │   ├── energy_distribution_<index>.csv  # motion energy distribution stats (centered 150 samples)
+│   │   │   │   ├── centered_energy_distribution_<index>.png # plot of the centered 150-sample energy band
+│   │   │   │   ├── overall_energy_distribution_<index>.png  # plot of the raw 1.74s energy band with average bounds
+│   │   │   │   ├── 00001.csv                        # raw 1.74-second gesture recording (~174 samples)
+│   │   │   │   ├── 00001.txt                        # start index of the centered 150-sample gesture window
+│   │   │   │   ├── 00001.png                        # plot of raw recording with vertical start/end markers
 │   │   │   │   └── ...
 ```
 
@@ -136,20 +140,20 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
   "baudrate": 115200,
   "record_duration_s": 1.5,
   "target_samples": 150,
-  "max_samples_before_recalibration": 20,
-  "pre_buffer_s": 0.05,
-  "post_buffer_s": 0.05,
+  "max_samples_before_recalibration": 25,
+  "pre_buffer_s": 0.12,
+  "post_buffer_s": 0.12,
   "recalibrations": [
     {
-      "file": "calibration_<index>.csv", # IMU static recording used to calculate sensor drift for normalization for the following MAX_SAMPLES_BEFORE_RECALIBRATION samples.
-      "sample_index": (<index> * max_samples_before_recalibration) # index of the first sample of this calibration window.
+      "file": "calibration_<index>.csv", # IMU static recording used to calculate sensor drift
+      "sample_index": <sample_count_at_calibration>
     },
     ...
   ],
   "energy_distributions": [
     {
-      "file": "energy_distribution_<index>.csv", # Calculated motion energy distribution for the last MAX_SAMPLES_BEFORE_RECALIBRATION samples.
-      "sample_index": ((<index> + 1) * max_samples_before_recalibration) # index of the last sample of this energy distribution calculation window.
+      "file": "energy_distribution_<index>.csv", # Calculated motion energy distribution stats
+      "sample_index": <sample_count_at_distribution>
     },
     ...
   ]

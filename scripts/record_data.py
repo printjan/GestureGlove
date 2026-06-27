@@ -61,6 +61,7 @@ import platform
 import json
 from pathlib import Path
 import pandas as pd
+import numpy as np
 # pyrefly: ignore [missing-import]
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend to prevent GUI/threading crashes
@@ -83,14 +84,14 @@ set_log_level("WARNING")
 BAUDRATE = 115200
 RECORD_DURATION_S = 1.5
 TARGET_SAMPLES = 150  # = RECORD_DURATION_S * 100 Hz
-PLOT_EVERY_SAMPLE = False
+PLOT_EVERY_SAMPLE = True
 PLOT_MOVEMENT_DISTRIBUTION = True
 PLOT_CALIBRATION_RECORDING = True
 MAX_DEVIATION_OF_TARGET_SAMPLE_RATE = 30  # Max permitted sample count deviation percentage (30%)
 MAX_SAMPLES_BEFORE_RECALIBRATION = 25  # Number of samples recorded before requiring a re-calibration pose
 
-PRE_BUFFER_S = 0.05
-POST_BUFFER_S = 0.05
+PRE_BUFFER_S = 0.12
+POST_BUFFER_S = 0.12
 
 # Geste, die kontinuierlich (überlappend) statt sample-weise aufgenommen wird.
 NONE_GESTURE_NAME = "none"
@@ -266,12 +267,12 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     received_counts['IMU1'] += len(snapshot1)
     received_counts['IMU2'] += len(snapshot2)
 
-    # Save the first valid window
-    save_df = valid_windows[0].copy()
+    # Save the full merged resampled overlap
+    save_df = _merged.copy()
     save_df = save_df.drop(columns=['sync_time_us'], errors='ignore')
 
-    if len(save_df) != target_samples:
-        logger.error(f"Sample contains invalid row count: {len(save_df)} (expected exactly {target_samples}).")
+    if len(save_df) < target_samples:
+        logger.error(f"Sample contains too few rows: {len(save_df)} (expected at least {target_samples}).")
         raise RuntimeError(f"Invalid row count: {len(save_df)}.")
 
     filename = Path(filename)
@@ -279,11 +280,21 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     save_df.to_csv(filename, index=False)
     ui.success(f"File saved successfully: {filename.name}")
 
-    # Save plot
     is_calibration = "calibration" in filename.name
+    start_idx = None
+    if not is_calibration:
+        # Find start index in _merged
+        start_time_us = valid_windows[0]['sync_time_us'].iloc[0]
+        start_idx = int(np.where(_merged['sync_time_us'].values == start_time_us)[0][0])
+        # Write start index to companion .txt file
+        txt_filename = filename.with_suffix('.txt')
+        with open(txt_filename, "w", encoding="utf-8") as f:
+            f.write(str(start_idx))
+
+    # Save plot of full overlap with vertical bounds lines if start_idx is available
     should_plot = PLOT_CALIBRATION_RECORDING if is_calibration else PLOT_EVERY_SAMPLE
     if should_plot:
-        plot_data(save_df, save_path=filename.with_suffix('.png'))
+        plot_data(save_df, save_path=filename.with_suffix('.png'), start_idx=start_idx)
     return True
 
 
@@ -326,7 +337,10 @@ def handle_pause(last_csv, last_png, paused_during_recording):
                     last_csv.unlink()
                     if last_png and last_png.exists():
                         last_png.unlink()
-                    ui.success(f"Deleted: {last_csv.name} and associated plot.")
+                    txt_file = last_csv.with_suffix('.txt')
+                    if txt_file.exists():
+                        txt_file.unlink()
+                    ui.success(f"Deleted: {last_csv.name} and associated files.")
                     return "deleted"
                 except Exception as e:
                     ui.error(f"Error deleting file: {e}")
@@ -361,8 +375,11 @@ def handle_stop(last_csv, last_png):
                     last_csv.unlink()
                     if last_png and last_png.exists():
                         last_png.unlink()
+                    txt_file = last_csv.with_suffix('.txt')
+                    if txt_file.exists():
+                        txt_file.unlink()
                     print()
-                    ui.success(f"Deleted: {last_csv.name} and associated plot.")
+                    ui.success(f"Deleted: {last_csv.name} and associated files.")
                     deleted = True
                     break
                 except Exception as e:
@@ -668,11 +685,12 @@ def record_samples_loop(imu1, imu2, session_name):
             received_counts['IMU1'] += len(snapshot1)
             received_counts['IMU2'] += len(snapshot2)
 
-            save_df = valid_windows[0].copy()
+            # Save the full merged resampled overlap
+            save_df = _merged.copy()
             save_df = save_df.drop(columns=['sync_time_us'], errors='ignore')
 
-            if len(save_df) != TARGET_SAMPLES:
-                logger.error(f"Sample contains invalid row count: {len(save_df)} (expected exactly {TARGET_SAMPLES}).")
+            if len(save_df) < TARGET_SAMPLES:
+                logger.error(f"Sample contains too few rows: {len(save_df)} (expected at least {TARGET_SAMPLES}).")
                 raise RuntimeError(f"Invalid row count: {len(save_df)}.")
 
             rec_file = Path(rec_file)
@@ -680,11 +698,19 @@ def record_samples_loop(imu1, imu2, session_name):
             save_df.to_csv(rec_file, index=False)
             ui.success(f"File saved successfully: {rec_file.name}")
 
+            # Find start index in _merged
+            start_time_us = valid_windows[0]['sync_time_us'].iloc[0]
+            start_idx = int(np.where(_merged['sync_time_us'].values == start_time_us)[0][0])
+            # Write start index to companion .txt file
+            txt_filename = rec_file.with_suffix('.txt')
+            with open(txt_filename, "w", encoding="utf-8") as f:
+                f.write(str(start_idx))
+
             last_saved_csv = rec_file
             last_saved_png = rec_file.with_suffix('.png') if PLOT_EVERY_SAMPLE else None
             
             if PLOT_EVERY_SAMPLE:
-                plot_data(save_df, save_path=last_saved_png)
+                plot_data(save_df, save_path=last_saved_png, start_idx=start_idx)
                 
             saved += 1
 
@@ -820,7 +846,7 @@ def _print_dataset_counts():
 # ======================================================================================================================
 def save_and_plot_energy_distribution(gesture_name, session_name, sample_index=None):
     """
-    Computes statistical motion energy, saves it as CSV, and plots PNG.
+    Computes statistical motion energy, saves it as CSV, and plots centered & overall distributions.
     :param: gesture_name (str): name of gesture.
     :param: session_name (str): current session directory name.
     :param: sample_index (int | None): current sample index.
@@ -840,56 +866,93 @@ def save_and_plot_energy_distribution(gesture_name, session_name, sample_index=N
 
     logger.info("Calculating motion energy distribution for '%s' (%d files)...", gesture_name, len(files))
 
-    imu1_acc_runs = []
-    imu1_gyr_runs = []
-    imu2_acc_runs = []
-    imu2_gyr_runs = []
-
     import numpy as np
     import pandas as pd
+
+    # Center-sliced variables (exactly TARGET_SAMPLES = 150)
+    imu1_acc_centered = []
+    imu1_gyr_centered = []
+    imu2_acc_centered = []
+    imu2_gyr_centered = []
+
+    # Overall raw variables (standardized to overall_length)
+    imu1_acc_overall = []
+    imu1_gyr_overall = []
+    imu2_acc_overall = []
+    imu2_gyr_overall = []
+
+    start_indices = []
+    overall_length = int((RECORD_DURATION_S + PRE_BUFFER_S + POST_BUFFER_S) * 100)
 
     for f in files:
         try:
             df = pd.read_csv(f)
-            # Standardize length to TARGET_SAMPLES (150)
-            if len(df) < TARGET_SAMPLES:
-                pad_size = TARGET_SAMPLES - len(df)
-                last_row = df.iloc[-1:]
-                df = pd.concat([df, pd.concat([last_row] * pad_size, ignore_index=True)], ignore_index=True)
-            elif len(df) > TARGET_SAMPLES:
-                df = df.iloc[:TARGET_SAMPLES]
+            txt_path = f.with_suffix('.txt')
+            if txt_path.exists():
+                with open(txt_path, "r", encoding="utf-8") as tf:
+                    start_idx = int(tf.read().strip())
+            else:
+                start_idx = 0
+            
+            start_indices.append(start_idx)
 
-            imu1_acc = np.sqrt(df['IMU1_accX']**2 + df['IMU1_accY']**2 + df['IMU1_accZ']**2)
-            imu1_gyr = np.sqrt(df['IMU1_gyrX']**2 + df['IMU1_gyrY']**2 + df['IMU1_gyrZ']**2)
-            imu2_acc = np.sqrt(df['IMU2_accX']**2 + df['IMU2_accY']**2 + df['IMU2_accZ']**2)
-            imu2_gyr = np.sqrt(df['IMU2_gyrX']**2 + df['IMU2_gyrY']**2 + df['IMU2_gyrZ']**2)
+            # Center-sliced data (exactly TARGET_SAMPLES = 150)
+            df_centered = df.iloc[start_idx : start_idx + TARGET_SAMPLES]
+            if len(df_centered) < TARGET_SAMPLES:
+                pad_size = TARGET_SAMPLES - len(df_centered)
+                last_row = df_centered.iloc[-1:] if not df_centered.empty else df.iloc[-1:]
+                df_centered = pd.concat([df_centered, pd.concat([last_row] * pad_size, ignore_index=True)], ignore_index=True)
+            
+            imu1_acc_c = np.sqrt(df_centered['IMU1_accX']**2 + df_centered['IMU1_accY']**2 + df_centered['IMU1_accZ']**2)
+            imu1_gyr_c = np.sqrt(df_centered['IMU1_gyrX']**2 + df_centered['IMU1_gyrY']**2 + df_centered['IMU1_gyrZ']**2)
+            imu2_acc_c = np.sqrt(df_centered['IMU2_accX']**2 + df_centered['IMU2_accY']**2 + df_centered['IMU2_accZ']**2)
+            imu2_gyr_c = np.sqrt(df_centered['IMU2_gyrX']**2 + df_centered['IMU2_gyrY']**2 + df_centered['IMU2_gyrZ']**2)
 
-            imu1_acc_runs.append(imu1_acc)
-            imu1_gyr_runs.append(imu1_gyr)
-            imu2_acc_runs.append(imu2_acc)
-            imu2_gyr_runs.append(imu2_gyr)
+            imu1_acc_centered.append(imu1_acc_c)
+            imu1_gyr_centered.append(imu1_gyr_c)
+            imu2_acc_centered.append(imu2_acc_c)
+            imu2_gyr_centered.append(imu2_gyr_c)
+
+            # Overall raw data (exactly overall_length)
+            df_overall = df.copy()
+            if len(df_overall) < overall_length:
+                pad_size = overall_length - len(df_overall)
+                last_row = df_overall.iloc[-1:]
+                df_overall = pd.concat([df_overall, pd.concat([last_row] * pad_size, ignore_index=True)], ignore_index=True)
+            elif len(df_overall) > overall_length:
+                df_overall = df_overall.iloc[:overall_length]
+
+            imu1_acc_o = np.sqrt(df_overall['IMU1_accX']**2 + df_overall['IMU1_accY']**2 + df_overall['IMU1_accZ']**2)
+            imu1_gyr_o = np.sqrt(df_overall['IMU1_gyrX']**2 + df_overall['IMU1_gyrY']**2 + df_overall['IMU1_gyrZ']**2)
+            imu2_acc_o = np.sqrt(df_overall['IMU2_accX']**2 + df_overall['IMU2_accY']**2 + df_overall['IMU2_accZ']**2)
+            imu2_gyr_o = np.sqrt(df_overall['IMU2_gyrX']**2 + df_overall['IMU2_gyrY']**2 + df_overall['IMU2_gyrZ']**2)
+
+            imu1_acc_overall.append(imu1_acc_o)
+            imu1_gyr_overall.append(imu1_gyr_o)
+            imu2_acc_overall.append(imu2_acc_o)
+            imu2_gyr_overall.append(imu2_gyr_o)
         except Exception as e:
             logger.error("Error reading %s: %s", f.name, e)
 
-    if not imu1_acc_runs:
+    if not imu1_acc_centered:
         return
 
-    # Calculate statistics
-    imu1_acc_runs = np.array(imu1_acc_runs)
-    imu1_gyr_runs = np.array(imu1_gyr_runs)
-    imu2_acc_runs = np.array(imu2_acc_runs)
-    imu2_gyr_runs = np.array(imu2_gyr_runs)
+    # Process centered data statistics
+    imu1_acc_centered = np.array(imu1_acc_centered)
+    imu1_gyr_centered = np.array(imu1_gyr_centered)
+    imu2_acc_centered = np.array(imu2_acc_centered)
+    imu2_gyr_centered = np.array(imu2_gyr_centered)
 
     dist_df = pd.DataFrame({
         'sample_index': range(TARGET_SAMPLES),
-        'IMU1_acc_mean': np.mean(imu1_acc_runs, axis=0),
-        'IMU1_acc_std': np.std(imu1_acc_runs, axis=0),
-        'IMU1_gyr_mean': np.mean(imu1_gyr_runs, axis=0),
-        'IMU1_gyr_std': np.std(imu1_gyr_runs, axis=0),
-        'IMU2_acc_mean': np.mean(imu2_acc_runs, axis=0),
-        'IMU2_acc_std': np.std(imu2_acc_runs, axis=0),
-        'IMU2_gyr_mean': np.mean(imu2_gyr_runs, axis=0),
-        'IMU2_gyr_std': np.std(imu2_gyr_runs, axis=0),
+        'IMU1_acc_mean': np.mean(imu1_acc_centered, axis=0),
+        'IMU1_acc_std': np.std(imu1_acc_centered, axis=0),
+        'IMU1_gyr_mean': np.mean(imu1_gyr_centered, axis=0),
+        'IMU1_gyr_std': np.std(imu1_gyr_centered, axis=0),
+        'IMU2_acc_mean': np.mean(imu2_acc_centered, axis=0),
+        'IMU2_acc_std': np.std(imu2_acc_centered, axis=0),
+        'IMU2_gyr_mean': np.mean(imu2_gyr_centered, axis=0),
+        'IMU2_gyr_std': np.std(imu2_gyr_centered, axis=0),
     })
 
     # Get sequential filepath
@@ -897,24 +960,22 @@ def save_and_plot_energy_distribution(gesture_name, session_name, sample_index=N
     dist_df.to_csv(dist_csv, index=False)
     ui.success(f"Motion energy distribution saved: {dist_csv.name}")
 
-    # Plot creation (non-interactive, Agg)
+    # Plot 1: Centered energy distribution (exactly TARGET_SAMPLES = 150)
     plt.close('all')
-    t = np.linspace(0, RECORD_DURATION_S, TARGET_SAMPLES)
+    t_c = np.linspace(0, RECORD_DURATION_S, TARGET_SAMPLES)
     fig, axs = plt.subplots(2, 2, figsize=(14, 8), sharex=True)
-    fig.suptitle(f"Motion Energy Distribution: '{gesture_name}' ({len(files)} Samples)", fontsize=14, fontweight='bold')
+    fig.suptitle(f"Centered Motion Energy Distribution: '{gesture_name}' ({len(files)} Samples)", fontsize=14, fontweight='bold')
 
-    # IMU1 Acc
-    axs[0, 0].plot(t, dist_df['IMU1_acc_mean'], color='#1f77b4', label='Mean')
-    axs[0, 0].fill_between(t, dist_df['IMU1_acc_mean'] - dist_df['IMU1_acc_std'],
+    axs[0, 0].plot(t_c, dist_df['IMU1_acc_mean'], color='#1f77b4', label='Mean')
+    axs[0, 0].fill_between(t_c, dist_df['IMU1_acc_mean'] - dist_df['IMU1_acc_std'],
                            dist_df['IMU1_acc_mean'] + dist_df['IMU1_acc_std'], color='#1f77b4', alpha=0.2)
     axs[0, 0].set_title("IMU1 (Wrist) Accelerometer Magnitude")
     axs[0, 0].set_ylabel("Acceleration (g)")
     axs[0, 0].grid(True, linestyle='--')
     axs[0, 0].legend()
 
-    # IMU1 Gyr
-    axs[1, 0].plot(t, dist_df['IMU1_gyr_mean'], color='#ff7f0e', label='Mean')
-    axs[1, 0].fill_between(t, dist_df['IMU1_gyr_mean'] - dist_df['IMU1_gyr_std'],
+    axs[1, 0].plot(t_c, dist_df['IMU1_gyr_mean'], color='#ff7f0e', label='Mean')
+    axs[1, 0].fill_between(t_c, dist_df['IMU1_gyr_mean'] - dist_df['IMU1_gyr_std'],
                            dist_df['IMU1_gyr_mean'] + dist_df['IMU1_gyr_std'], color='#ff7f0e', alpha=0.2)
     axs[1, 0].set_title("IMU1 (Wrist) Gyroscope Magnitude")
     axs[1, 0].set_ylabel("Angular Velocity (dps)")
@@ -922,17 +983,15 @@ def save_and_plot_energy_distribution(gesture_name, session_name, sample_index=N
     axs[1, 0].grid(True, linestyle='--')
     axs[1, 0].legend()
 
-    # IMU2 Acc
-    axs[0, 1].plot(t, dist_df['IMU2_acc_mean'], color='#2ca02c', label='Mean')
-    axs[0, 1].fill_between(t, dist_df['IMU2_acc_mean'] - dist_df['IMU2_acc_std'],
+    axs[0, 1].plot(t_c, dist_df['IMU2_acc_mean'], color='#2ca02c', label='Mean')
+    axs[0, 1].fill_between(t_c, dist_df['IMU2_acc_mean'] - dist_df['IMU2_acc_std'],
                            dist_df['IMU2_acc_mean'] + dist_df['IMU2_acc_std'], color='#2ca02c', alpha=0.2)
     axs[0, 1].set_title("IMU2 (Finger) Accelerometer Magnitude")
     axs[0, 1].grid(True, linestyle='--')
     axs[0, 1].legend()
 
-    # IMU2 Gyr
-    axs[1, 1].plot(t, dist_df['IMU2_gyr_mean'], color='#d62728', label='Mean')
-    axs[1, 1].fill_between(t, dist_df['IMU2_gyr_mean'] - dist_df['IMU2_gyr_std'],
+    axs[1, 1].plot(t_c, dist_df['IMU2_gyr_mean'], color='#d62728', label='Mean')
+    axs[1, 1].fill_between(t_c, dist_df['IMU2_gyr_mean'] - dist_df['IMU2_gyr_std'],
                            dist_df['IMU2_gyr_mean'] + dist_df['IMU2_gyr_std'], color='#d62728', alpha=0.2)
     axs[1, 1].set_title("IMU2 (Finger) Gyroscope Magnitude")
     axs[1, 1].set_xlabel("Time (s)")
@@ -940,10 +999,64 @@ def save_and_plot_energy_distribution(gesture_name, session_name, sample_index=N
     axs[1, 1].legend()
 
     plt.tight_layout()
-    dist_png = dist_csv.with_suffix('.png')
-    plt.savefig(dist_png)
+    centered_png = dist_csv.parent / f"centered_energy_distribution_{dist_idx}.png"
+    plt.savefig(centered_png)
     plt.close(fig)
-    ui.success(f"Plot of motion energy distribution saved: {dist_png.name}")
+    ui.success(f"Centered plot saved: {centered_png.name}")
+
+    # Plot 2: Overall energy distribution (overall_length)
+    imu1_acc_overall = np.array(imu1_acc_overall)
+    imu1_gyr_overall = np.array(imu1_gyr_overall)
+    imu2_acc_overall = np.array(imu2_acc_overall)
+    imu2_gyr_overall = np.array(imu2_gyr_overall)
+
+    mean_start_idx = np.mean(start_indices)
+    mean_end_idx = mean_start_idx + TARGET_SAMPLES
+
+    # Convert start indices to time coordinates (indices / 100)
+    mean_start_t = mean_start_idx / 100.0
+    mean_end_t = mean_end_idx / 100.0
+
+    t_o = np.linspace(0, RECORD_DURATION_S + PRE_BUFFER_S + POST_BUFFER_S, overall_length)
+    fig_o, axs_o = plt.subplots(2, 2, figsize=(14, 8), sharex=True)
+    fig_o.suptitle(f"Overall Motion Energy Distribution: '{gesture_name}' ({len(files)} Samples)", fontsize=14, fontweight='bold')
+
+    # Overall statistics
+    o_df = pd.DataFrame({
+        'IMU1_acc_mean': np.mean(imu1_acc_overall, axis=0),
+        'IMU1_acc_std': np.std(imu1_acc_overall, axis=0),
+        'IMU1_gyr_mean': np.mean(imu1_gyr_overall, axis=0),
+        'IMU1_gyr_std': np.std(imu1_gyr_overall, axis=0),
+        'IMU2_acc_mean': np.mean(imu2_acc_overall, axis=0),
+        'IMU2_acc_std': np.std(imu2_acc_overall, axis=0),
+        'IMU2_gyr_mean': np.mean(imu2_gyr_overall, axis=0),
+        'IMU2_gyr_std': np.std(imu2_gyr_overall, axis=0),
+    })
+
+    # Helper function to plot subplot
+    def plot_overall_subplot(ax, mean_col, std_col, color, title, ylabel, xlabel=None):
+        ax.plot(t_o, o_df[mean_col], color=color, label='Mean')
+        ax.fill_between(t_o, o_df[mean_col] - o_df[std_col], o_df[mean_col] + o_df[std_col], color=color, alpha=0.2)
+        ax.axvline(x=mean_start_t, color='black', linestyle='--', linewidth=1.5, label='Avg Start')
+        ax.axvline(x=mean_end_t, color='black', linestyle='--', linewidth=1.5, label='Avg End')
+        ax.set_title(title)
+        if ylabel:
+            ax.set_ylabel(ylabel)
+        if xlabel:
+            ax.set_xlabel(xlabel)
+        ax.grid(True, linestyle='--')
+        ax.legend()
+
+    plot_overall_subplot(axs_o[0, 0], 'IMU1_acc_mean', 'IMU1_acc_std', '#1f77b4', "IMU1 (Wrist) Accelerometer Magnitude", "Acceleration (g)")
+    plot_overall_subplot(axs_o[1, 0], 'IMU1_gyr_mean', 'IMU1_gyr_std', '#ff7f0e', "IMU1 (Wrist) Gyroscope Magnitude", "Angular Velocity (dps)", "Time (s)")
+    plot_overall_subplot(axs_o[0, 1], 'IMU2_acc_mean', 'IMU2_acc_std', '#2ca02c', "IMU2 (Finger) Accelerometer Magnitude", "")
+    plot_overall_subplot(axs_o[1, 1], 'IMU2_gyr_mean', 'IMU2_gyr_std', '#d62728', "IMU2 (Finger) Gyroscope Magnitude", "", "Time (s)")
+
+    plt.tight_layout()
+    overall_png = dist_csv.parent / f"overall_energy_distribution_{dist_idx}.png"
+    plt.savefig(overall_png)
+    plt.close(fig_o)
+    ui.success(f"Overall plot saved: {overall_png.name}")
 
     # Record in metadata
     session_metadata["energy_distributions"].append({
@@ -953,11 +1066,12 @@ def save_and_plot_energy_distribution(gesture_name, session_name, sample_index=N
     save_metadata(gesture_name, session_name)
 
 
-def plot_data(df, save_path=None):
+def plot_data(df, save_path=None, start_idx=None):
     """
     Plots IMU accelerometer and gyroscope signals to a PNG file.
     :param: df (DataFrame): data to plot.
     :param: save_path (str | Path | None): save destination path.
+    :param: start_idx (int | None): start index of the selected gesture window.
     :return: None:
     """
     if df.empty:
@@ -977,6 +1091,9 @@ def plot_data(df, save_path=None):
         plt.plot(x, df['IMU2_accX'], label='IMU2 AccX', linestyle='--', color='r')
         plt.plot(x, df['IMU2_accY'], label='IMU2 AccY', linestyle='--', color='g')
         plt.plot(x, df['IMU2_accZ'], label='IMU2 AccZ', linestyle='--', color='b')
+    if start_idx is not None:
+        plt.axvline(x=start_idx, color='black', linestyle='--', linewidth=1.5, label='Gesture Start')
+        plt.axvline(x=start_idx + 150, color='black', linestyle='--', linewidth=1.5, label='Gesture End')
     plt.title('Accelerometer Data')
     plt.xlabel('Sample')
     plt.ylabel('g')
@@ -993,6 +1110,9 @@ def plot_data(df, save_path=None):
         plt.plot(x, df['IMU2_gyrX'], label='IMU2 GyrX', linestyle='--', color='r')
         plt.plot(x, df['IMU2_gyrY'], label='IMU2 GyrY', linestyle='--', color='g')
         plt.plot(x, df['IMU2_gyrZ'], label='IMU2 GyrZ', linestyle='--', color='b')
+    if start_idx is not None:
+        plt.axvline(x=start_idx, color='black', linestyle='--', linewidth=1.5, label='Gesture Start')
+        plt.axvline(x=start_idx + 150, color='black', linestyle='--', linewidth=1.5, label='Gesture End')
     plt.title('Gyroscope Data')
     plt.xlabel('Sample')
     plt.ylabel('dps')
@@ -1003,7 +1123,7 @@ def plot_data(df, save_path=None):
     if save_path:
         save_path = Path(save_path)
         plt.savefig(save_path)
-        ui.success(f"Plot gespeichert unter: {save_path.name}")
+        ui.success(f"Plot saved to: {save_path.name}")
     plt.close(fig)
 
 

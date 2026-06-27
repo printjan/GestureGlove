@@ -14,8 +14,13 @@ Since gestures are time-series sequences that can vary in speed, standard Euclid
 * **Separability Evaluation**: For any two gesture classes $C_A$ and $C_B$, compute the **Fisher Criterion / Silhouette Score**:
   $$S(C_A, C_B) = \frac{\mu_{inter} - \mu_{intra}}{\sigma_{intra}}$$
   where $\mu_{inter}$ is the mean distance between samples of different classes, and $\mu_{intra}$ is the mean distance between samples of the same class. A high ratio indicates that the two gestures are highly distinct and easily separable.
+* **Why**: Low inter-class distance warns you beforehand that the CNN is highly likely to confuse those two gestures.
 
-### B. Confusion Mapping via KNN/SVM on Flat Windows
+### B. Intra-class Variance (Gesture Consistency)
+* **What to calculate**: The average Dynamic Time Warping (DTW) distance between all pairs of samples within a single gesture category.
+* **Why**: High intra-class variance means you perform the same gesture very differently each time, which will make it harder for the CNN to learn a stable representation.
+
+### C. Confusion Mapping via KNN/SVM on Flat Windows
 An excellent proxy for CNN classifier capabilities is to fit a lightweight statistical model on flattened window vectors.
 * **Methodology**:
   1. Flatten each window of shape $(T=150, C=14)$ into a single vector of size $2100$.
@@ -69,3 +74,20 @@ While absolute Yaw cannot be anchored without a magnetometer, relative yaw chang
 * **Methodology**: Integrate the z-gyroscope channel over the active window:
   $$\Delta \psi = \sum_{t \in W} g_{z,t} \cdot \Delta t$$
 * **Benefit**: Provides clear directional mapping in the horizontal plane (distinguishing clock rotations and horizontal sweeps).
+
+---
+
+## 3. Model Training Discussion: Alignment vs. Translation Jitter
+
+When designing the CNN training pipeline, we must investigate a core trade-off enabled by our new 1.74s raw boundary data:
+
+### The Hypothesis
+* **Centered-Only Training**: By using the `.txt` start indices to extract perfectly centered gestures, the CNN maps the gesture's peak acceleration/velocity to the exact middle of the 150-sample sequence. This maximizes peak class boundary separation and reduces class confusion during offline validation.
+* **The Real-Time Mismatch**: During continuous real-time sliding-window inference, the gesture slides dynamically across the input window. A model trained *only* on centered data might fail to trigger because the peak is shifted to the edges.
+* **The Augmentation Concern:** If we apply temporal jitter (e.g., slicing training inputs at $s \pm \text{jitter}$ samples) to force translation invariance, does the model lose its class-discrimination capability? There is a risk that by making the model robust to temporal shift, the decision boundary between classes (such as `swipe_right` vs `circle_cw`) degrades—meaning the model gets better at predicting *that* a gesture happened, but less certain about *which* gesture it was.
+
+### Evaluation Workflow
+Using the raw boundaries saved in our CSVs, we should systematically evaluate:
+1. **Model A (No Jitter)**: Train on centered windows (sliced exactly at the companion `.txt` index).
+2. **Model B (Jittered)**: Train with a random offset shift (e.g., $s \pm 10$ samples) introduced during batch generation.
+3. Compare both models' validation confusion matrices, precision/recall per class, and classification confidence distributions. If Model B shows a significant increase in inter-class confusion, it will confirm the risk, suggesting we should favor a low-latency stillness trigger loop (which centers the real-time frame before feeding it to Model A) rather than relying on translation invariant training.

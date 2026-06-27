@@ -45,6 +45,7 @@ def build_config(args) -> PipelineConfig:
     :return: config (PipelineConfig): assembled pipeline configuration.
     """
     return PipelineConfig(
+        jitter_range=args.jitter_range,
         filters=FilterConfig(
             enabled=not args.no_filter,
             acc_filter=FilterType(args.acc_filter),
@@ -76,6 +77,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build a CNN-ready gesture dataset from recorded CSVs.")
     p.add_argument("--data-dir", default=None, help="Data root (defaults to the project data/ directory).")
     p.add_argument("--save", default=None, help="Optional .npz output path to cache the dataset.")
+    p.add_argument("--jitter-range", type=int, default=0, help="Jitter range for translation augmentation.")
 
     p.add_argument("--no-filter", action="store_true", help="Disable digital filtering.")
     p.add_argument("--acc-filter", default="lowpass", choices=[f.value for f in FilterType])

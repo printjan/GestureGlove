@@ -37,6 +37,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import random
 
 from data_fusion_project.core.logger_setup import get_logger
 from data_fusion_project.core.paths import DATA_DIR, GESTURES
@@ -373,9 +374,31 @@ def load_dataset(config: PipelineConfig | None = None, data_dir: str | Path | No
                 n_skipped += 1
                 continue
 
-            # Coerce window length on the raw frame before processing.
-            arr = _coerce_length(df.to_numpy(dtype=float), config.window_size, config.pad_mode)
-            df = pd.DataFrame(arr, columns=df.columns)
+            # Load start index companion file (hard implementation - no backward compatibility for raw files)
+            txt_path = csv_path.with_suffix('.txt')
+            if not txt_path.exists():
+                raise FileNotFoundError(f"Missing required start index companion file: {txt_path}")
+
+            try:
+                with open(txt_path, "r", encoding="utf-8") as txt_f:
+                    start_idx = int(txt_f.read().strip())
+            except Exception as exc:
+                logger.error("Failed to read/parse start index from %s: %s", txt_path, exc)
+                raise exc
+
+            # Crop the raw dataframe to exactly config.window_size starting at start_idx with optional jitter
+            raw_len = len(df)
+            if hasattr(config, 'jitter_range') and config.jitter_range > 0:
+                shift = random.randint(-config.jitter_range, config.jitter_range)
+                start_idx = max(0, min(start_idx + shift, raw_len - config.window_size))
+
+            df = df.iloc[start_idx : start_idx + config.window_size]
+
+            if len(df) != config.window_size:
+                raise ValueError(
+                    f"Sliced window from {csv_path.name} starting at index {start_idx} has length {len(df)} "
+                    f"instead of expected target {config.window_size} (raw file length was {raw_len})."
+                )
 
             try:
                 channels, ch_names, scalar, ft_names = process_window(df, profile, config)
