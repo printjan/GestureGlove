@@ -1,0 +1,20 @@
+{
+  "baudrate": 115200,
+  "record_duration_s": 1.5,
+  "target_samples": 150,
+  "max_samples_per_session": 25,
+  "pre_buffer_s": 0.15,
+  "post_buffer_s": 0.15,
+  "recalibrations": [
+    {
+      "file": "calibration_0.csv",
+      "sample_index": 0
+    }
+  ],
+  "energy_distributions": [
+    {
+      "file": "energy_distribution_0.csv",
+      "sample_index": 25
+    }
+  ]
+}

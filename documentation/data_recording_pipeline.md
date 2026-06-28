@@ -112,13 +112,13 @@ To ensure that only high-quality data is recorded, the pipeline aborts immediate
 
 ---
 
-## 8. Periodic Re-calibration & Drift Auditing
+## 8. Automatic Session Splitting & Drift Auditing
 
-To correct for sensor/gyroscope bias drift during long recording sessions, the pipeline forces a re-calibration pose periodically:
-* **Threshold Flag (`MAX_SAMPLES_BEFORE_RECALIBRATION`):** Defines the maximum number of gesture samples recorded (for both active gestures and continuous `none` slices) before requiring a new calibration file (default: `25` samples).
+To limit sensor/gyroscope bias drift within a session and to spread samples across more sessions (improving leave-session-out generalization), the pipeline automatically starts a new session after a fixed number of samples:
+* **Threshold Flag (`MAX_SAMPLES_PER_SESSION`):** Defines the maximum number of gesture samples recorded per session (for both active gestures and continuous `none` slices) before a new session begins automatically (default: `25` samples).
 * **Plotting Flag (`PLOT_CALIBRATION_RECORDING`):** Boolean flag (default: `True`) deciding if a PNG plot of the calibration recording is saved alongside the CSV file.
-* **Non-Overwriting Re-calibration Pose**: When the threshold is reached, the recording loop or continuous stream pauses automatically, saves the session's motion energy distribution, and prompts the user to perform a 5-second stillness calibration.
-* **0-Indexed Sequential Naming**: All calibrations and motion energy distributions are numbered sequentially starting at `0`. The initial calibration is saved as `calibration_0.csv`.
+* **New Session on Threshold**: When the threshold is reached, the recording loop or continuous stream saves the finished session's motion energy distribution, then creates a fresh session directory (`<base>_p2`, `<base>_p3`, ...) and prompts the user for the new session's mandatory 5-second stillness calibration before recording continues.
+* **0-Indexed Sequential Naming**: Within each session, calibrations and motion energy distributions are numbered sequentially starting at `0`. Every session begins with its initial calibration saved as `calibration_0.csv`.
 * **Energy Distribution Plots**: 
   - `centered_energy_distribution_<number>.png`: Displays the mean and standard deviation of the centered 150-sample gesture windows in this block.
   - `overall_energy_distribution_<number>.png`: Displays the mean and standard deviation over the full 1.74-second raw segments, with vertical black dashed lines marking where the average start and end gesture bounds fall.

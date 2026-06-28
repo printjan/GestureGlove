@@ -88,7 +88,7 @@ PLOT_EVERY_SAMPLE = False
 PLOT_MOVEMENT_DISTRIBUTION = True
 PLOT_CALIBRATION_RECORDING = True
 MAX_DEVIATION_OF_TARGET_SAMPLE_RATE = 30  # Max permitted sample count deviation percentage (30%)
-MAX_SAMPLES_BEFORE_RECALIBRATION = 25  # Number of samples recorded before requiring a re-calibration pose
+MAX_SAMPLES_PER_SESSION = 25  # Number of samples recorded before automatically starting a new session
 
 PRE_BUFFER_S = 0.15
 POST_BUFFER_S = 0.15
@@ -149,7 +149,7 @@ def init_new_metadata():
         "baudrate": BAUDRATE,
         "record_duration_s": RECORD_DURATION_S,
         "target_samples": TARGET_SAMPLES,
-        "max_samples_before_recalibration": MAX_SAMPLES_BEFORE_RECALIBRATION,
+        "max_samples_per_session": MAX_SAMPLES_PER_SESSION,
         "pre_buffer_s": PRE_BUFFER_S,
         "post_buffer_s": POST_BUFFER_S,
         "recalibrations": [],
@@ -167,13 +167,47 @@ def save_metadata(gesture_name: str, session_name: str):
         json.dump(session_metadata, f, indent=2, ensure_ascii=False)
 
 
-def get_next_calibration_filepath(gesture_name: str, session_name: str) -> tuple[Path, int]:
+def get_next_block_session_name(gesture_name: str, base_session_name: str) -> str:
     """
-    Returns the path and index of the next sequential calibration file.
+    Returns a new, unused session name for the next sample block of a gesture.
+
+    Block sessions are derived from the base session name by appending a part suffix
+    ('<base>_p2', '<base>_p3', ...). Directories already present on disk are skipped so
+    reruns never overwrite previously recorded blocks.
     """
-    idx = len(session_metadata.get("recalibrations", []))
-    cal_file = get_calibration_file(gesture_name, session_name, idx)
-    return cal_file, idx
+    from data_fusion_project.core.paths import get_gesture_dir
+    gesture_dir = get_gesture_dir(gesture_name)
+    part = 2
+    while (gesture_dir / f"{base_session_name}_p{part}").exists():
+        part += 1
+    return f"{base_session_name}_p{part}"
+
+
+def start_new_session(imu1, imu2, gesture_name: str, base_session_name: str) -> str:
+    """
+    Begins a fresh recording session for the gesture after a full sample block.
+
+    Creates a new session directory, (re)initializes the module session metadata, and
+    records the mandatory initial static calibration at sample_index 0. Replaces the old
+    in-session re-calibration step. Returns the new session name.
+    """
+    new_session = get_next_block_session_name(gesture_name, base_session_name)
+    ui.hr(title=f"New session: {new_session}")
+    ui.info(f"Beginning a new session for gesture '{gesture_name}'.")
+
+    # Fresh metadata for the new session.
+    init_new_metadata()
+
+    # Every session must start with a static calibration at sample_index 0.
+    cal_file = get_calibration_file(gesture_name, new_session, index=0)
+    record_calibration_with_redo(imu1, imu2, cal_file)
+    session_metadata["recalibrations"].append({
+        "file": cal_file.name,
+        "sample_index": 0,
+    })
+    save_metadata(gesture_name, new_session)
+    ui.success("Calibration successfully saved!")
+    return new_session
 
 
 def get_next_energy_distribution_filepath(gesture_name: str, session_name: str) -> tuple[Path, int]:
@@ -532,6 +566,7 @@ def record_continuous(imu1, imu2, session_name):
     :raises: RuntimeError: if sensor reading fails during the session.
     """
     gesture_name = GESTURES[current_gesture]
+    current_session = session_name
     window_us = int(RECORD_DURATION_S * 1e6)
     advance_us = max(1, int(round(RECORD_DURATION_S * (1 - OVERLAP_RATIO) * 1e6)))
     poll_s = 0.05
@@ -583,24 +618,17 @@ def record_continuous(imu1, imu2, session_name):
 
             window = _extract_window(local_buf1, local_buf2)
             if window is not None:
-                rec_file = get_next_recording_file(gesture_name, session_name)
+                rec_file = get_next_recording_file(gesture_name, current_session)
                 _save_window(window, rec_file, verbose=False, plot=False)
                 saved += 1
                 print(f"\r  Overlapping 'none' windows saved: {saved}", end="", flush=True)
 
-                if saved > 0 and saved % MAX_SAMPLES_BEFORE_RECALIBRATION == 0:
+                if saved > 0 and saved % MAX_SAMPLES_PER_SESSION == 0:
                     print()  # Clear the carriage return line
-                    save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
-                    ui.warning(f"\n{saved} samples recorded. Re-calibration required!")
-                    cal_file, cal_idx = get_next_calibration_filepath(gesture_name, session_name)
-                    record_calibration_with_redo(imu1, imu2, cal_file)
-
-                    session_metadata["recalibrations"].append({
-                        "file": cal_file.name,
-                        "sample_index": saved
-                    })
-                    save_metadata(gesture_name, session_name)
-                    ui.success("Calibration successfully saved!")
+                    save_and_plot_energy_distribution(gesture_name, current_session, sample_index=saved)
+                    ui.warning(f"\n{saved} samples recorded. Starting a new session!")
+                    current_session = start_new_session(imu1, imu2, gesture_name, session_name)
+                    saved = 0
 
                     # Purge buffers and queues to prevent using calibration data as 'none' samples
                     imu1.get_data()
@@ -633,9 +661,10 @@ def record_samples_loop(imu1, imu2, session_name):
     :raises: RuntimeError: if sensor error or sample rate deviation is too high.
     """
     gesture_name = GESTURES[current_gesture]
+    current_session = session_name
     saved = 0
     sample_idx = 0
-    
+
     last_saved_csv = None
     last_saved_png = None
     
@@ -660,7 +689,7 @@ def record_samples_loop(imu1, imu2, session_name):
                 raise RuntimeError("IMU thread stopped during sample loop.")
 
             sample_idx += 1
-            rec_file = get_next_recording_file(gesture_name, session_name)
+            rec_file = get_next_recording_file(gesture_name, current_session)
 
             logger.info("Sample %d ('%s') — Starting recording...", sample_idx, gesture_name)
             
@@ -770,19 +799,15 @@ def record_samples_loop(imu1, imu2, session_name):
                 
             saved += 1
 
-            # Check for re-calibration trigger after MAX_SAMPLES_BEFORE_RECALIBRATION successfully recorded samples
-            if saved > 0 and saved % MAX_SAMPLES_BEFORE_RECALIBRATION == 0:
-                save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
-                ui.warning(f"\n{saved} samples recorded. Re-calibration required!")
-                cal_file, cal_idx = get_next_calibration_filepath(gesture_name, session_name)
-                record_calibration_with_redo(imu1, imu2, cal_file)
-                
-                session_metadata["recalibrations"].append({
-                    "file": cal_file.name,
-                    "sample_index": saved
-                })
-                save_metadata(gesture_name, session_name)
-                ui.success("Calibration successfully saved!")
+            # After a full block of MAX_SAMPLES_PER_SESSION samples, start a new session.
+            if saved > 0 and saved % MAX_SAMPLES_PER_SESSION == 0:
+                save_and_plot_energy_distribution(gesture_name, current_session, sample_index=saved)
+                ui.warning(f"\n{saved} samples recorded. Starting a new session!")
+                current_session = start_new_session(imu1, imu2, gesture_name, session_name)
+                saved = 0
+                sample_idx = 0
+                last_saved_csv = None
+                last_saved_png = None
 
             # Pause Phase
             pause_status = ui.progress_bar(PAUSE_DURATION_S, label="Pause:     ", color=Style.ERROR, stop_session=stop_session)
@@ -808,7 +833,7 @@ def record_samples_loop(imu1, imu2, session_name):
 
     # Calculate and plot motion energy distribution on loop finish
     logger.info("Saved: %d samples for '%s'", saved, gesture_name)
-    save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
+    save_and_plot_energy_distribution(gesture_name, current_session, sample_index=saved)
     _print_received_counts()
     _print_dataset_counts()
 
