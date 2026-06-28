@@ -161,7 +161,7 @@ Analyse the project. Then Look at our persumed process - Build a Detailed Descri
 
 ## Features
 
-pitch, roll, yaw, acc_mag, gyro_mag, sqrt(ax²+ay²+az²), sqrt(gx²+gy²+gz²), |a|, |g|, d(ax)/dt, d(ay)/dt, d(az)/dt
+pitch, roll, yaw, acc_mag, gyro_mag, sqrt(ax²+ay²+az²), sqrt(gx²+gy²+gz²), |a|, |g|, d(ax)/dt, d(ay)/dt, d(az)/dt, Kinematic Invariants, Linear Acceleration, Differential Dynamics and Relative Yaw 
 
 
 

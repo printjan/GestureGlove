@@ -58,9 +58,10 @@ def check_samples():
 
             txt_file = csv_file.with_suffix('.txt')
             if not txt_file.exists():
-                anomaly_count += 1
-                relative_path = csv_file.relative_to(DATA_DIR)
-                print(f"[ANOMALY] {relative_path} is missing its companion .txt start index file.")
+                if row_count != 150:
+                    anomaly_count += 1
+                    relative_path = csv_file.relative_to(DATA_DIR)
+                    print(f"[ANOMALY] {relative_path} is missing its companion .txt start index file and has {row_count} rows (expected 150).")
             else:
                 try:
                     with open(txt_file, "r") as tf:

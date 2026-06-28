@@ -298,6 +298,47 @@ def run_single_recording(imu1, imu2, duration_s, target_samples, filename):
     return True
 
 
+def record_calibration_with_redo(imu1, imu2, cal_file: Path) -> bool:
+    """
+    Handles recording a 5-second calibration with the option to redo/discard.
+    Returns True when calibration is successfully recorded and accepted.
+    """
+    while True:
+        ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+        ui.info("Please hold the sensors absolutely still for 5 seconds...")
+        
+        success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
+        if not success:
+            ui.error("Calibration failed. Please try again.")
+            continue
+            
+        ui.info("\nCalibration recording complete.")
+        ui.info("Press [Enter] to accept/keep this calibration, or [d] to delete and redo...")
+        
+        ui.flush_input()
+        accepted = None
+        while accepted is None:
+            key = ui.get_key()
+            if key in ("\r", "\n"):
+                accepted = True
+                ui.success("Calibration accepted!")
+            elif key == "d":
+                accepted = False
+                ui.warning("Calibration discarded. Deleting files and preparing to re-record...")
+                try:
+                    if cal_file.exists():
+                        cal_file.unlink()
+                    png_file = cal_file.with_suffix('.png')
+                    if png_file.exists():
+                        png_file.unlink()
+                except Exception as e:
+                    ui.error(f"Failed to delete calibration files: {e}")
+            time.sleep(0.05)
+            
+        if accepted:
+            return True
+
+
 
 # ======================================================================================================================
 # UI & State Helpers
@@ -432,14 +473,7 @@ def input_thread(imu1, imu2, session_name):
         if not cal_file.exists():
             ui.warning(f"No calibration found for gesture '{gesture_name}' in session '{session_name}'.")
             with ui.non_blocking_input():
-                ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
-                ui.info("Please hold the sensors absolutely still for 5 seconds...")
-                success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
-                while not success:
-                    ui.error("Calibration failed. Please try again.")
-                    ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
-                    ui.info("Please hold the sensors absolutely still for 5 seconds...")
-                    success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
+                record_calibration_with_redo(imu1, imu2, cal_file)
             
             # Record in metadata
             session_metadata["recalibrations"].append({
@@ -559,14 +593,7 @@ def record_continuous(imu1, imu2, session_name):
                     save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
                     ui.warning(f"\n{saved} samples recorded. Re-calibration required!")
                     cal_file, cal_idx = get_next_calibration_filepath(gesture_name, session_name)
-                    ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
-                    ui.info("Please hold the sensors absolutely still for 5 seconds...")
-                    success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
-                    while not success:
-                        ui.error("Calibration failed. Please try again.")
-                        ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
-                        ui.info("Please hold the sensors absolutely still for 5 seconds...")
-                        success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
+                    record_calibration_with_redo(imu1, imu2, cal_file)
 
                     session_metadata["recalibrations"].append({
                         "file": cal_file.name,
@@ -748,14 +775,7 @@ def record_samples_loop(imu1, imu2, session_name):
                 save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
                 ui.warning(f"\n{saved} samples recorded. Re-calibration required!")
                 cal_file, cal_idx = get_next_calibration_filepath(gesture_name, session_name)
-                ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
-                ui.info("Please hold the sensors absolutely still for 5 seconds...")
-                success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
-                while not success:
-                    ui.error("Calibration failed. Please try again.")
-                    ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
-                    ui.info("Please hold the sensors absolutely still for 5 seconds...")
-                    success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
+                record_calibration_with_redo(imu1, imu2, cal_file)
                 
                 session_metadata["recalibrations"].append({
                     "file": cal_file.name,

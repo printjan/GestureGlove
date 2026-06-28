@@ -374,17 +374,24 @@ def load_dataset(config: PipelineConfig | None = None, data_dir: str | Path | No
                 n_skipped += 1
                 continue
 
-            # Load start index companion file (hard implementation - no backward compatibility for raw files)
+            # Load start index companion file. If it doesn't exist, check if the CSV is pre-cropped.
             txt_path = csv_path.with_suffix('.txt')
             if not txt_path.exists():
-                raise FileNotFoundError(f"Missing required start index companion file: {txt_path}")
-
-            try:
-                with open(txt_path, "r", encoding="utf-8") as txt_f:
-                    start_idx = int(txt_f.read().strip())
-            except Exception as exc:
-                logger.error("Failed to read/parse start index from %s: %s", txt_path, exc)
-                raise exc
+                raw_len = len(df)
+                if raw_len == config.window_size:
+                    start_idx = 0
+                else:
+                    raise FileNotFoundError(
+                        f"Missing required start index companion file: {txt_path} "
+                        f"(CSV length is {raw_len}, which does not match target window_size {config.window_size})."
+                    )
+            else:
+                try:
+                    with open(txt_path, "r", encoding="utf-8") as txt_f:
+                        start_idx = int(txt_f.read().strip())
+                except Exception as exc:
+                    logger.error("Failed to read/parse start index from %s: %s", txt_path, exc)
+                    raise exc
 
             # Crop the raw dataframe to exactly config.window_size starting at start_idx with optional jitter
             raw_len = len(df)

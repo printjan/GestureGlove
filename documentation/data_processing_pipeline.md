@@ -9,7 +9,7 @@ configured without reading the source.
 The pipeline runs four stages per window, in this order:
 
 ```
-load CSV -> [1] Calibration -> [2] Filtering -> [3] Orientation -> [4] Features -> (X, y, ...)
+load data -> [1] Calibration -> [2] Filtering -> [3] Orientation -> [4] Features -> (X, y, ...)
 ```
 
 Each stage has its own config dataclass, all bundled in `PipelineConfig`. Every option has a

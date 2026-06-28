@@ -64,3 +64,23 @@ def stratified_split(y: np.ndarray, test_fraction: float = 0.2, seed: int = 42) 
         test_idx.extend(idx[:n_test].tolist())
         train_idx.extend(idx[n_test:].tolist())
     return np.array(sorted(train_idx)), np.array(sorted(test_idx))
+
+
+def chronological_split(y: np.ndarray, test_fraction: float = 0.2) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Splits sample indices chronologically per class (first part for train, last part for test)
+    to prevent temporal leakage on overlapping sliding windows.
+    :param: y (np.ndarray): integer labels, shape (N,).
+    :param: test_fraction (float): fraction of samples per class held out for test.
+    :return: indices (tuple): (train_idx, test_idx) integer arrays.
+    """
+    train_idx: list[int] = []
+    test_idx: list[int] = []
+    for label in np.unique(y):
+        idx = np.where(y == label)[0]
+        # Since samples are loaded sequentially in dataset.py, they are already sorted chronologically
+        n_test = max(1, int(round(len(idx) * test_fraction)))
+        n_train = len(idx) - n_test
+        train_idx.extend(idx[:n_train].tolist())
+        test_idx.extend(idx[n_train:].tolist())
+    return np.array(sorted(train_idx)), np.array(sorted(test_idx))

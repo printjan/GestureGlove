@@ -46,7 +46,7 @@ from data_fusion_project.processing.orientation import (
 )
 from data_fusion_project.processing import filters
 from data_fusion_project.processing import features
-from data_fusion_project.processing.splits import leave_sessions_out, stratified_split
+from data_fusion_project.processing.splits import leave_sessions_out, stratified_split, chronological_split
 
 __all__ = [
     # configuration
@@ -77,4 +77,5 @@ __all__ = [
     # splitting
     "leave_sessions_out",
     "stratified_split",
+    "chronological_split",
 ]

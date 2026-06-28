@@ -70,6 +70,7 @@ DATA_DIR = BASE_DIRECTORY / "data"
 
 DEVICES_CONFIG_FILE = CONFIG_DIR / "devices.yml"
 LOGS_DIR = BASE_DIRECTORY / "logs"
+MODELS_DIR = BASE_DIRECTORY / "models"
 
 
 # --- Gestures and Hierarchical Data Paths ---

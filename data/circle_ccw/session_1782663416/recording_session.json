@@ -9,20 +9,12 @@
     {
       "file": "calibration_0.csv",
       "sample_index": 0
-    },
-    {
-      "file": "calibration_1.csv",
-      "sample_index": 25
     }
   ],
   "energy_distributions": [
     {
       "file": "energy_distribution_0.csv",
       "sample_index": 25
-    },
-    {
-      "file": "energy_distribution_1.csv",
-      "sample_index": 24
     }
   ]
 }
