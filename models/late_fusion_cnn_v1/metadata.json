@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-06-28T16:42:47Z",
-  "training_duration_s": 12.195010900497437,
+  "timestamp": "2026-06-28T16:54:52Z",
+  "training_duration_s": 11.637094736099243,
   "epochs_trained": 49,
   "split_type": "chronological",
   "test_fraction": 0.2,
@@ -51,11 +51,11 @@
   ],
   "feature_names": [],
   "final_metrics": {
-    "train_loss": 0.0016009483952075243,
+    "train_loss": 0.00442620599642396,
     "train_acc": 1.0,
-    "val_loss": 0.10956922918558121,
-    "val_acc": 0.9777777791023254,
-    "test_accuracy": 0.9777777777777777
+    "val_loss": 0.012514936737716198,
+    "val_acc": 1.0,
+    "test_accuracy": 1.0
   },
   "pipeline_config": {
     "sample_rate_hz": 100.0,

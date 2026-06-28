@@ -104,14 +104,14 @@ In the dataset an classifiers the naming scheme will be as follows:
 ---
 
 
-## Project Strucure 
+## Project Structure 
 
-### Data Structure
+### Data & Model Structure
 
 ```
 data_fusion_project/
 ├── data/
-│   ├── <guesture name>/
+│   ├── <gesture name>/
 │   │   │   ├── <recording_session>/
 │   │   │   │   ├── recording_session.json           # properties of the particular recording session
 │   │   │   │   ├── calibration_<index>.csv          # 5 second recording of no movement to establish sensor drift
@@ -123,6 +123,9 @@ data_fusion_project/
 │   │   │   │   ├── 00001.txt                        # start index of the centered 150-sample gesture window
 │   │   │   │   ├── 00001.png                        # plot of raw recording with vertical start/end markers
 │   │   │   │   └── ...
+├── models/
+│   ├── <model_name>_<timestamp>.keras               # saved trained Keras model structure & weights
+│   └── <model_name>_<timestamp>_metadata.json       # JSON file containing training run audit properties
 ```
 
 ### Data set structure
@@ -157,6 +160,54 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
     },
     ...
   ]
+}
+```
+
+### Model Metadata Properties Structure (`<model_name>_<timestamp>_metadata.json`)
+
+```json
+{
+  "model_name": "late_fusion_multi_branch_1d_cnn",
+  "timestamp": "20260628_220600",
+  "machine_info": {
+    "hostname": "MacBook-Pro",
+    "os": "macOS-14.5",
+    "cpu": "Apple M3 Max",
+    "gpu": "Apple M3 Max (Unified Memory)"
+  },
+  "training_parameters": {
+    "epochs": 50,
+    "batch_size": 32,
+    "optimizer": "adam",
+    "learning_rate": 0.001,
+    "validation_split": 0.2,
+    "jitter_range": 10,
+    "filters": {
+      "acc_cutoff_hz": 8.0,
+      "gyro_cutoff_hz": 12.0
+    }
+  },
+  "dataset_info": {
+    "total_samples": 450,
+    "per_class_count": {
+      "none": 120,
+      "swipe_left": 50,
+      "swipe_right": 50,
+      "circle_cw": 50,
+      "circle_ccw": 50,
+      "fist": 45,
+      "jerk_down": 45,
+      "jerk_up": 40
+    },
+    "sessions_used": ["session_0", "session_1"]
+  },
+  "performance": {
+    "best_epoch": 42,
+    "train_accuracy": 0.985,
+    "val_accuracy": 0.962,
+    "val_loss": 0.125,
+    "val_f1_score": 0.961
+  }
 }
 ```
 

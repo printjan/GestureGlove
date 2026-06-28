@@ -258,7 +258,13 @@ def process_window(df: pd.DataFrame, profile: calib.CalibrationProfile, config: 
             orientation[imu] = estimate_orientation(acc, gyr, fs, config.orientation)
 
     # 4. Feature assembly.
-    channels, channel_names = feat.build_channels(processed, orientation, config.features)
+    channels, channel_names = feat.build_channels(
+        processed,
+        orientation,
+        config.features,
+        fs=fs,
+        orientation_degrees=config.orientation.degrees
+    )
     scalar, feature_names = feat.build_scalar_features(processed, channels, channel_names, config.features)
     return channels, channel_names, scalar, feature_names
 

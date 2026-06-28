@@ -154,6 +154,16 @@ class FeatureConfig:
     include_orientation: bool = True
     cross_correlation: bool = False
     statistics: bool = False
+    
+    # Real-Time Pre-Computed Features
+    include_linear_jerk: bool = False
+    include_angular_acceleration: bool = False
+    include_relative_acceleration: bool = False
+    include_relative_rotation: bool = False
+    include_relative_yaw: bool = False
+    include_accelerometer_magnitude: bool = False
+    include_gyroscope_magnitude: bool = False
+    include_gravity_free_linear_acceleration: bool = False
 
 
 # ======================================================================================================================

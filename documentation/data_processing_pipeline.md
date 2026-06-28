@@ -132,6 +132,14 @@ features** form the optional `(F,)` vector `features`.
 | `include_orientation` | bool | `True` | `True` / `False` | Include the roll/pitch channels produced by the orientation stage (§4). |
 | `cross_correlation` | bool | `False` | `True` / `False` | Add scalar cross-correlation features between corresponding wrist/finger axes (zero-lag correlation, peak correlation, lag). Goes into `features`, not `X`. |
 | `statistics` | bool | `False` | `True` / `False` | Add per-channel scalar statistics (mean/std/min/max/rms) over each window. Goes into `features`, not `X`. |
+| `include_linear_jerk` | bool | `False` | `True` / `False` | Add lowpass-filtered linear jerk (3 channels, `<imu>_linear_jerkX/Y/Z`). |
+| `include_angular_acceleration` | bool | `False` | `True` / `False` | Add angular acceleration (3 channels, `<imu>_angular_accelerationX/Y/Z`). |
+| `include_relative_acceleration` | bool | `False` | `True` / `False` | Add relative acceleration `IMU2_acc − IMU1_acc` (3 channels, `relative_accelerationX/Y/Z`). |
+| `include_relative_rotation` | bool | `False` | `True` / `False` | Add relative rotation `IMU2_gyr − IMU1_gyr` (3 channels, `relative_rotationX/Y/Z`). |
+| `include_relative_yaw` | bool | `False` | `True` / `False` | Add relative yaw integrated over active window (`<imu>_relative_yaw`). |
+| `include_accelerometer_magnitude` | bool | `False` | `True` / `False` | Add accelerometer magnitude (`<imu>_accelerometer_magnitude`). |
+| `include_gyroscope_magnitude` | bool | `False` | `True` / `False` | Add gyroscope magnitude (`<imu>_gyroscope_magnitude`). |
+| `include_gravity_free_linear_acceleration` | bool | `False` | `True` / `False` | Add gravity-free linear acceleration using pitch/roll (3 channels, `<imu>_gravity_free_linear_accelerationX/Y/Z`). |
 
 ### How settings map to the output channels
 

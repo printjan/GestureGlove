@@ -133,3 +133,20 @@ def get_next_recording_file(gesture_name: str, session_name: str) -> Path:
 
     next_index = max(existing_indices, default=0) + 1
     return session_dir / f"{next_index:05d}.csv"
+
+
+def get_model_file(model_name: str, timestamp: str) -> Path:
+    """
+    Get the path to a trained model file (e.g. models/<model_name>_<timestamp>.keras).
+    """
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    return MODELS_DIR / f"{model_name}_{timestamp}.keras"
+
+
+def get_model_metadata_file(model_name: str, timestamp: str) -> Path:
+    """
+    Get the path to a trained model's metadata JSON file (e.g. models/<model_name>_<timestamp>_metadata.json).
+    """
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    return MODELS_DIR / f"{model_name}_{timestamp}_metadata.json"
+

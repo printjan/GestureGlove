@@ -34,12 +34,14 @@ _GYR_AXES = ("X", "Y", "Z")
 # ======================================================================================================================
 # Time-series channel assembly
 # ======================================================================================================================
-def build_channels(processed: dict, orientation: dict, config: FeatureConfig) -> tuple[np.ndarray, list[str]]:
+def build_channels(processed: dict, orientation: dict, config: FeatureConfig, fs: float = 100.0, orientation_degrees: bool = True) -> tuple[np.ndarray, list[str]]:
     """
     Assembles the selected time-series channels into a (T, C) matrix.
     :param: processed (dict): per-IMU calibrated/filtered blocks, e.g. ``{"IMU1": {"acc": (T,3), "gyr": (T,3)}}``.
     :param: orientation (dict): per-IMU orientation angles, e.g. ``{"IMU1": {"roll": (T,), "pitch": (T,)}}``.
     :param: config (FeatureConfig): channel-selection options.
+    :param: fs (float): global sampling rate in Hz.
+    :param: orientation_degrees (bool): whether orientation angles are in degrees.
     :return: result (tuple): (channels, names) where channels is (T, C) float and names has length C.
     """
     columns: list[np.ndarray] = []
@@ -59,26 +61,89 @@ def build_channels(processed: dict, orientation: dict, config: FeatureConfig) ->
             for j, ax in enumerate(_GYR_AXES):
                 columns.append(gyr[:, j])
                 names.append(f"{imu}_gyr{ax}")
-        if config.include_acc_magnitude:
+        
+        # Accelerometer Magnitudes
+        if config.include_accelerometer_magnitude:
+            columns.append(np.linalg.norm(acc, axis=1))
+            names.append(f"{imu}_accelerometer_magnitude")
+        elif config.include_acc_magnitude:
             columns.append(np.linalg.norm(acc, axis=1))
             names.append(f"{imu}_acc_mag")
-        if config.include_gyro_magnitude:
+            
+        # Gyroscope Magnitudes
+        if config.include_gyroscope_magnitude:
+            columns.append(np.linalg.norm(gyr, axis=1))
+            names.append(f"{imu}_gyroscope_magnitude")
+        elif config.include_gyro_magnitude:
             columns.append(np.linalg.norm(gyr, axis=1))
             names.append(f"{imu}_gyr_mag")
 
-    # Inter-IMU differences (finger relative to wrist): IMU2 - IMU1.
-    if (config.include_diff_acc or config.include_diff_gyro) and "IMU1" in processed and "IMU2" in processed:
-        if config.include_diff_acc:
+        # Linear Jerk
+        if config.include_linear_jerk:
+            dt = 1.0 / fs
+            jerk = np.diff(acc, axis=0) / dt
+            jerk = np.vstack([jerk[0:1], jerk])
+            from data_fusion_project.processing.filters import apply_filter
+            from data_fusion_project.processing.config import FilterType
+            jerk = apply_filter(jerk, FilterType.LOWPASS, cutoff_hz=8.0, fs=fs, order=2)
+            for j, ax in enumerate(_ACC_AXES):
+                columns.append(jerk[:, j])
+                names.append(f"{imu}_linear_jerk{ax}")
+
+        # Angular Acceleration
+        if config.include_angular_acceleration:
+            dt = 1.0 / fs
+            alpha = np.diff(gyr, axis=0) / dt
+            alpha = np.vstack([alpha[0:1], alpha])
+            for j, ax in enumerate(_GYR_AXES):
+                columns.append(alpha[:, j])
+                names.append(f"{imu}_angular_acceleration{ax}")
+
+        # Short-Term Integrated Relative Yaw
+        if config.include_relative_yaw:
+            dt = 1.0 / fs
+            rel_yaw = np.cumsum(gyr[:, 2]) * dt
+            if not orientation_degrees:
+                rel_yaw = rel_yaw * (np.pi / 180.0)
+            columns.append(rel_yaw)
+            names.append(f"{imu}_relative_yaw")
+
+        # Gravity-Free Linear Acceleration
+        if config.include_gravity_free_linear_acceleration:
+            if imu in orientation:
+                roll_val = orientation[imu]["roll"]
+                pitch_val = orientation[imu]["pitch"]
+                if orientation_degrees:
+                    roll_rad = roll_val * (np.pi / 180.0)
+                    pitch_rad = pitch_val * (np.pi / 180.0)
+                else:
+                    roll_rad = roll_val
+                    pitch_rad = pitch_val
+                g_x = -np.sin(pitch_rad)
+                g_y = np.cos(pitch_rad) * np.sin(roll_rad)
+                g_z = np.cos(pitch_rad) * np.cos(roll_rad)
+                lin_acc = acc - np.column_stack([g_x, g_y, g_z])
+                for j, ax in enumerate(_ACC_AXES):
+                    columns.append(lin_acc[:, j])
+                    names.append(f"{imu}_gravity_free_linear_acceleration{ax}")
+            else:
+                logger.warning("Gravity-free linear acceleration requested for %s but no orientation estimate is available; skipping.", imu)
+
+    # Inter-IMU differences / relative features (finger relative to wrist): IMU2 - IMU1.
+    if "IMU1" in processed and "IMU2" in processed:
+        if config.include_relative_acceleration or config.include_diff_acc:
             diff = processed["IMU2"]["acc"] - processed["IMU1"]["acc"]
+            name_prefix = "relative_acceleration" if config.include_relative_acceleration else "diff_acc"
             for j, ax in enumerate(_ACC_AXES):
                 columns.append(diff[:, j])
-                names.append(f"diff_acc{ax}")
-        if config.include_diff_gyro:
+                names.append(f"{name_prefix}{ax}")
+        if config.include_relative_rotation or config.include_diff_gyro:
             diff = processed["IMU2"]["gyr"] - processed["IMU1"]["gyr"]
+            name_prefix = "relative_rotation" if config.include_relative_rotation else "diff_gyr"
             for j, ax in enumerate(_GYR_AXES):
                 columns.append(diff[:, j])
-                names.append(f"diff_gyr{ax}")
-    elif config.include_diff_acc or config.include_diff_gyro:
+                names.append(f"{name_prefix}{ax}")
+    elif config.include_diff_acc or config.include_diff_gyro or config.include_relative_acceleration or config.include_relative_rotation:
         logger.debug("Inter-IMU difference requested but both IMUs are not available; skipping.")
 
     # Orientation channels (roll/pitch per IMU). Iterate the computed orientations directly so
