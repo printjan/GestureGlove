@@ -115,9 +115,9 @@ To ensure that only high-quality data is recorded, the pipeline aborts immediate
 ## 8. Periodic Re-calibration & Drift Auditing
 
 To correct for sensor/gyroscope bias drift during long recording sessions, the pipeline forces a re-calibration pose periodically:
-* **Threshold Flag (`MAX_SAMPLES_BEFORE_RECALIBRATION`):** Defines the maximum number of gesture samples recorded before requiring a new calibration file (default: `25` samples).
+* **Threshold Flag (`MAX_SAMPLES_BEFORE_RECALIBRATION`):** Defines the maximum number of gesture samples recorded (for both active gestures and continuous `none` slices) before requiring a new calibration file (default: `25` samples).
 * **Plotting Flag (`PLOT_CALIBRATION_RECORDING`):** Boolean flag (default: `True`) deciding if a PNG plot of the calibration recording is saved alongside the CSV file.
-* **Non-Overwriting Re-calibration Pose**: When the threshold is reached, the recording loop pauses automatically, saves the session's motion energy distribution, and prompts the user to perform a 5-second stillness calibration.
+* **Non-Overwriting Re-calibration Pose**: When the threshold is reached, the recording loop or continuous stream pauses automatically, saves the session's motion energy distribution, and prompts the user to perform a 5-second stillness calibration.
 * **0-Indexed Sequential Naming**: All calibrations and motion energy distributions are numbered sequentially starting at `0`. The initial calibration is saved as `calibration_0.csv`.
 * **Energy Distribution Plots**: 
   - `centered_energy_distribution_<number>.png`: Displays the mean and standard deviation of the centered 150-sample gesture windows in this block.

@@ -554,6 +554,35 @@ def record_continuous(imu1, imu2, session_name):
                 saved += 1
                 print(f"\r  Overlapping 'none' windows saved: {saved}", end="", flush=True)
 
+                if saved > 0 and saved % MAX_SAMPLES_BEFORE_RECALIBRATION == 0:
+                    print()  # Clear the carriage return line
+                    save_and_plot_energy_distribution(gesture_name, session_name, sample_index=saved)
+                    ui.warning(f"\n{saved} samples recorded. Re-calibration required!")
+                    cal_file, cal_idx = get_next_calibration_filepath(gesture_name, session_name)
+                    ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+                    ui.info("Please hold the sensors absolutely still for 5 seconds...")
+                    success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
+                    while not success:
+                        ui.error("Calibration failed. Please try again.")
+                        ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+                        ui.info("Please hold the sensors absolutely still for 5 seconds...")
+                        success = run_single_recording(imu1, imu2, duration_s=5.0, target_samples=500, filename=cal_file)
+
+                    session_metadata["recalibrations"].append({
+                        "file": cal_file.name,
+                        "sample_index": saved
+                    })
+                    save_metadata(gesture_name, session_name)
+                    ui.success("Calibration successfully saved!")
+
+                    # Purge buffers and queues to prevent using calibration data as 'none' samples
+                    imu1.get_data()
+                    imu2.get_data()
+                    local_buf1.clear()
+                    local_buf2.clear()
+                    next_start_us = None
+                    continue
+
             next_start_us += advance_us
             _trim_before(local_buf1, next_start_us)
             _trim_before(local_buf2, next_start_us)
