@@ -143,7 +143,7 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
   "baudrate": 115200,
   "record_duration_s": 1.5,
   "target_samples": 150,
-  "max_samples_before_recalibration": 25,
+  "max_samples_per_session": 25,
   "pre_buffer_s": 0.12,
   "post_buffer_s": 0.12,
   "recalibrations": [
@@ -218,7 +218,7 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
 Extracts trainings data and OPTIONALLY preprocesses it providing different preprocessing options or OPTIONALLY calculates features:
 
 - Calibration: 
-  - Periodic static calibration (every `MAX_SAMPLES_BEFORE_RECALIBRATION` samples):
+  - Static calibration at the start of every session (a new session begins automatically every `MAX_SAMPLES_PER_SESSION` samples):
     - 5 seconds still pose:
       - wrist mounted normally
       - index finger extended or relaxed in defined pose
