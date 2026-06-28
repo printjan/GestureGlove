@@ -90,4 +90,103 @@ When designing the CNN training pipeline, we must investigate a core trade-off e
 Using the raw boundaries saved in our CSVs, we should systematically evaluate:
 1. **Model A (No Jitter)**: Train on centered windows (sliced exactly at the companion `.txt` index).
 2. **Model B (Jittered)**: Train with a random offset shift (e.g., $s \pm 10$ samples) introduced during batch generation.
-3. Compare both models' validation confusion matrices, precision/recall per class, and classification confidence distributions. If Model B shows a significant increase in inter-class confusion, it will confirm the risk, suggesting we should favor a low-latency stillness trigger loop (which centers the real-time frame before feeding it to Model A) rather than relying on translation invariant training.
+3. **Comparison**: Compare both models' validation confusion matrices, precision/recall per class, and classification confidence distributions. If Model B shows a significant increase in inter-class confusion, it will confirm the risk, suggesting we should favor a low-latency stillness trigger loop (which centers the real-time frame before feeding it to Model A) rather than relying on translation invariant training.
+
+---
+
+## 4. Data Quality Auditing (What to Look For)
+
+To analyze the metrics described in Section 1 and judge dataset quality before training, use the following visual and numerical checks:
+
+### A. Dynamic Time Warping (DTW) Distance Heatmaps
+* **Visualization:** Plot a pairwise distance matrix heatmap of all recorded gesture windows. Group samples by class along both axes.
+* **Good Signs (Green Flags):**
+  * **Diagonal Block Structure:** Clear, dark square blocks along the diagonal showing low DTW distances within the same class ($D_{intra} \to 0$).
+  * **Clean Inter-Class Margins:** Highly contrasting light regions off-diagonal, indicating high distance between different classes ($D_{inter} \gg D_{intra}$).
+  * **Fisher Separability Ratio:** $S(C_A, C_B) \ge 1.5$.
+* **Bad Signs (Red Flags):**
+  * **Inter-Class Smearing:** Faint block boundaries (e.g., `swipe_left` and `swipe_right` showing low pairwise distance), warning that the trajectory profiles are too similar.
+  * **Fisher Separability Ratio:** $S(C_A, C_B) < 1.0$, indicating overlapping clusters.
+
+### B. Trajectory Consistency & Shaded Bands
+* **Visualization:** Plot the mean time-series curve for each sensor channel with a $\pm 1$ standard deviation shaded band.
+* **Good Signs:** Narrow, compact standard deviation bands. This indicates high user consistency (performing the gesture at a similar speed and path each time).
+* **Bad Signs:** Wide, ballooning bands, or bimodal peaks. This suggests high intra-class variance, meaning the gesture is performed in inconsistent tempos or directions.
+
+### C. Dimensionality Reduction (PCA, UMAP, t-SNE)
+* **Visualization:** Project the flattened $150 \times 12$ windows down to 2D using UMAP or t-SNE and plot them color-coded by class.
+* **Good Signs:** Compact, well-separated island clusters with clear decision boundaries.
+* **Bad Signs:** A single massive blob in the center, or gesture classes heavily overlapping with the `none` (idle) class cluster.
+
+### D. Jensen-Shannon (JS) Divergence from `none`
+* **Visualization:** Plot overlapping histograms of motion energy peaks for `none` versus active gestures.
+* **Good Signs:** $D_{JS} \ge 0.8$. Complete separation between stillness noise and the gesture envelope.
+* **Bad Signs:** $D_{JS} < 0.4$. This indicates the gesture is too subtle or contains too much stillness, making real-time trigger detection highly prone to false positives.
+
+---
+
+## 5. Translating Audits to Engineering Decisions
+
+Once the dataset is audited, use the metrics to drive engineering choices:
+
+| Audit Finding | Pipeline Level | Operational Action |
+|---------------|----------------|--------------------|
+| **Low Separability** ($S(C_A, C_B) < 1.0$) between directionals | **Feature Engineering** | Compute first-order time derivatives (jerk) and integrate Z-gyroscope (relative yaw) to isolate direction vectors. |
+| **High Intra-class Variance** (inconsistent speed) | **Preprocessing / Augmentation** | Apply **Time Warping Augmentation** (rescaling the time-axis by $\pm 20\%$) to teach rate invariance. |
+| **Low JS Divergence** ($D_{JS} < 0.4$) for subtle gestures | **Real-Time Pipeline** | Implement a two-stage classification: (1) high-sensitivity energy trigger, (2) multi-class CNN inference gating. |
+| **Real-time Latency Mismatch** | **Model Training** | Set `jitter_range` in `PipelineConfig` to randomly shift slices, training the model to recognize off-center boundaries. |
+
+---
+
+## 6. Feature Selection Matrix
+
+To feed the CNN model, we structure features into a multi-channel tensor of shape `(Batch, Time=150, Channels)`:
+
+| Feature Channel Group | Math Formulation | Purpose |
+|----------------------|------------------|---------|
+| **Raw Signals** (12 channels) | $a_x, a_y, a_z, g_x, g_y, g_z$ (IMU1 & IMU2) | Baseline motion dynamics. |
+| **Kinematic Invariants** (4 channels) | $a_{mag} = \sqrt{\sum a_i^2}$, $g_{mag} = \sqrt{\sum g_i^2}$ | Orientation-invariant magnitudes. Excellent for segment bounds and triggering. |
+| **Linear Acceleration** (6 channels) | $\mathbf{a}_{linear} = \mathbf{a}_{raw} - \mathbf{g}_{rotated}$ | Removes static gravity vectors using Kalman orientation (roll/pitch). |
+| **Differential Dynamics** (6 channels) | $\Delta a = a_{finger} - a_{wrist}$, $\Delta g = g_{finger} - g_{wrist}$ | Separates arm movement (rigid rotation) from isolated finger gestures. |
+| **Relative Yaw** (2 channels) | $\Delta \psi = \sum g_z \cdot \Delta t$ | Resolves left/right and clockwise/counter-clockwise trajectories. |
+
+---
+
+## 7. CNN Model Architecture Design: Late Fusion Multi-Branch CNN
+
+Since we are fusing two distinct physical nodes (Wrist vs. Finger) and handcrafted statistical features, a **Late Fusion Multi-Branch Conv1D CNN** is the optimal setup:
+
+```mermaid
+graph TD
+    Input["Input Window (150, Channels)"] --> W_Split["Wrist Channels"]
+    Input --> F_Split["Finger Channels"]
+    Input --> S_Split["Statistical / Handcrafted Features"]
+
+    W_Split --> Branch1["Wrist Conv1D Branch<br/>- Conv1D (kernel=5, filters=32)<br/>- BatchNorm & ReLU<br/>- MaxPool1D<br/>- Conv1D (kernel=3, filters=64)<br/>- GlobalAveragePooling1D"]
+    
+    F_Split --> Branch2["Finger Conv1D Branch<br/>- Conv1D (kernel=5, filters=32)<br/>- BatchNorm & ReLU<br/>- MaxPool1D<br/>- Conv1D (kernel=3, filters=64)<br/>- GlobalAveragePooling1D"]
+
+    S_Split --> Branch3["Dense Feature MLP<br/>- Dense (32, ReLU)<br/>- Dropout (0.2)"]
+
+    Branch1 --> Concatenate["Concatenate Layer"]
+    Branch2 --> Concatenate
+    Branch3 --> Concatenate
+
+    Concatenate --> Classifier["FC Dense (64, ReLU)"]
+    Classifier --> Dropout["Dropout (0.3)"]
+    Dropout --> Softmax["Softmax Layer (8 Classes)"]
+```
+
+### Key Architectural Choices:
+1. **Parallel Temporal Branches (Late Fusion):**
+   * Keeping the Wrist and Finger networks separate allows each branch to build local spatial features independently before merging. Arm gestures are dominated by wrist dynamics, whereas hand gestures are dominated by finger-to-wrist deltas.
+2. **Conv1D for Temporal Learning:**
+   * 1D convolutions extract shift-invariant local features along the timeline. This helps handle slight temporal misalignments during real-time sliding window inference.
+3. **Global Average Pooling (GAP) vs. Flattening:**
+   * Replacing flat outputs with `GlobalAveragePooling1D` reduces the parameter footprint drastically, preventing overfitting on small training sets.
+4. **Regularization:**
+   * Batch Normalization is applied after each Conv1D layer to stabilize training.
+   * Dropout ($30\%$) is added before the final classifier to ensure generalization.
+5. **Loss & Optimization:**
+   * **Loss:** `categorical_crossentropy` (with one-hot label encoding).
+   * **Optimizer:** `Adam(learning_rate=0.001)` paired with a learning rate decay schedule (`ReduceLROnPlateau`).
