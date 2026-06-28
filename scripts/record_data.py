@@ -90,8 +90,8 @@ PLOT_CALIBRATION_RECORDING = True
 MAX_DEVIATION_OF_TARGET_SAMPLE_RATE = 30  # Max permitted sample count deviation percentage (30%)
 MAX_SAMPLES_BEFORE_RECALIBRATION = 25  # Number of samples recorded before requiring a re-calibration pose
 
-PRE_BUFFER_S = 0.12
-POST_BUFFER_S = 0.12
+PRE_BUFFER_S = 0.15
+POST_BUFFER_S = 0.15
 
 # Geste, die kontinuierlich (überlappend) statt sample-weise aufgenommen wird.
 NONE_GESTURE_NAME = "none"
