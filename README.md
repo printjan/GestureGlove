@@ -124,8 +124,12 @@ data_fusion_project/
 │   │   │   │   ├── 00001.png                        # plot of raw recording with vertical start/end markers
 │   │   │   │   └── ...
 ├── models/
-│   ├── <model_name>_<timestamp>.keras               # saved trained Keras model structure & weights
-│   └── <model_name>_<timestamp>_metadata.json       # JSON file containing training run audit properties
+│   ├── <model_name>_<timestamp>/
+│   │   ├── confusion_matrix.png
+│   │   ├── <model_name>_<timestamp>.
+│   │   ├── <model_name>_<timestamp>.
+│   │   ├── <model_name>_<timestamp>.keras               # saved trained Keras model structure & weights
+│   │   └── <model_name>_<timestamp>_metadata.json       # JSON file containing training run audit properties
 ```
 
 ### Data set structure
