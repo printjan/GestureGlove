@@ -316,5 +316,3 @@ Strategy idea: Because the drift is dynamic and non-linear, a single initial cal
 
 
 
-
-

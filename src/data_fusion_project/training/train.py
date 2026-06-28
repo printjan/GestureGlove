@@ -26,6 +26,65 @@ logger = get_logger(__name__)
 
 
 # ======================================================================================================================
+# Data Augmentation Helpers
+# ======================================================================================================================
+def random_rotation_matrix(max_angle_deg: float = 180.0) -> np.ndarray:
+    """Generates a random 3D rotation matrix within a max angle (in degrees)."""
+    if max_angle_deg <= 0:
+        return np.eye(3)
+    # Random axis
+    theta = np.random.uniform(0, np.pi * 2)
+    phi = np.arccos(np.random.uniform(-1, 1))
+    x = np.sin(phi) * np.cos(theta)
+    y = np.sin(phi) * np.sin(theta)
+    z = np.cos(phi)
+    axis = np.array([x, y, z])
+    # Random angle
+    angle = np.random.uniform(-np.radians(max_angle_deg), np.radians(max_angle_deg))
+    # Rodrigues' rotation formula
+    a = np.cos(angle / 2.0)
+    b, c, d = -axis * np.sin(angle / 2.0)
+    aa, bb, cc, dd = a * a, b * b, c * c, d * d
+    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
+    return np.array([
+        [aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+        [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+        [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]
+    ])
+
+
+def apply_rotation_augmentation(X_train: np.ndarray, channel_names: list[str], max_angle_deg: float = 15.0) -> np.ndarray:
+    """
+    Applies random 3D rotation augmentation to any accelerometer and gyroscope 3D vector groups in X_train.
+    """
+    if max_angle_deg <= 0:
+        return X_train
+    X_aug = X_train.copy()
+    N, T, C = X_aug.shape
+    
+    # Identify unique IMU prefixes
+    imus = set()
+    for name in channel_names:
+        parts = name.split("_")
+        if len(parts) > 1:
+            imus.add(parts[0])
+            
+    for imu in imus:
+        acc_idx = [i for i, name in enumerate(channel_names) if name.startswith(f"{imu}_acc") and any(name.endswith(ax) for ax in ("X", "Y", "Z"))]
+        gyr_idx = [i for i, name in enumerate(channel_names) if name.startswith(f"{imu}_gyr") and any(name.endswith(ax) for ax in ("X", "Y", "Z"))]
+        
+        for i in range(N):
+            if len(acc_idx) == 3:
+                R_acc = random_rotation_matrix(max_angle_deg)
+                X_aug[i][:, acc_idx] = X_aug[i][:, acc_idx] @ R_acc.T
+            if len(gyr_idx) == 3:
+                R_gyr = random_rotation_matrix(max_angle_deg)
+                X_aug[i][:, gyr_idx] = X_aug[i][:, gyr_idx] @ R_gyr.T
+                
+    return X_aug
+
+
+# ======================================================================================================================
 # Time Series Scaler
 # ======================================================================================================================
 class TimeSeriesScaler:
@@ -164,7 +223,8 @@ def train_model(
     epochs: int = 50,
     batch_size: int = 32,
     output_dir: str | Path | None = None,
-    seed: int = 42
+    seed: int = 42,
+    augment_rotation: float = 0.0
 ) -> tuple[keras.Model, dict, dict]:
     """
     Executes the training and evaluation loop.
@@ -206,6 +266,10 @@ def train_model(
     if X_wrist is not None:
         X_wrist_train = X_wrist[train_idx]
         X_wrist_test = X_wrist[test_idx]
+        if augment_rotation > 0.0:
+            wrist_ch_names = [ds.channel_names[i] for i in wrist_idx]
+            X_wrist_train = apply_rotation_augmentation(X_wrist_train, wrist_ch_names, augment_rotation)
+            logger.info("Applied random 3D rotation augmentation to Wrist training branch (max %d deg)", augment_rotation)
         scaler_wrist = TimeSeriesScaler()
         X_wrist_train_scaled = scaler_wrist.fit_transform(X_wrist_train)
         X_wrist_test_scaled = scaler_wrist.transform(X_wrist_test)
@@ -217,6 +281,10 @@ def train_model(
     if X_finger is not None:
         X_finger_train = X_finger[train_idx]
         X_finger_test = X_finger[test_idx]
+        if augment_rotation > 0.0:
+            finger_ch_names = [ds.channel_names[i] for i in finger_idx]
+            X_finger_train = apply_rotation_augmentation(X_finger_train, finger_ch_names, augment_rotation)
+            logger.info("Applied random 3D rotation augmentation to Finger training branch (max %d deg)", augment_rotation)
         scaler_finger = TimeSeriesScaler()
         X_finger_train_scaled = scaler_finger.fit_transform(X_finger_train)
         X_finger_test_scaled = scaler_finger.transform(X_finger_test)

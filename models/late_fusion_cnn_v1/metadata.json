@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-06-28T16:54:52Z",
-  "training_duration_s": 11.637094736099243,
-  "epochs_trained": 49,
+  "timestamp": "2026-06-28T21:27:02Z",
+  "training_duration_s": 17.33221197128296,
+  "epochs_trained": 46,
   "split_type": "chronological",
   "test_fraction": 0.2,
   "seed": 42,
@@ -51,9 +51,9 @@
   ],
   "feature_names": [],
   "final_metrics": {
-    "train_loss": 0.00442620599642396,
+    "train_loss": 0.003879387164488435,
     "train_acc": 1.0,
-    "val_loss": 0.012514936737716198,
+    "val_loss": 0.004145490471273661,
     "val_acc": 1.0,
     "test_accuracy": 1.0
   },
@@ -105,7 +105,15 @@
       "include_diff_gyro": false,
       "include_orientation": true,
       "cross_correlation": false,
-      "statistics": false
+      "statistics": false,
+      "include_linear_jerk": false,
+      "include_angular_acceleration": false,
+      "include_relative_acceleration": false,
+      "include_relative_rotation": false,
+      "include_relative_yaw": false,
+      "include_accelerometer_magnitude": false,
+      "include_gyroscope_magnitude": false,
+      "include_gravity_free_linear_acceleration": false
     }
   }
 }

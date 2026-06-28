@@ -100,6 +100,8 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="Evaluation splitting strategy (leave-session-out, stratified, or chronological).")
     p.add_argument("--test-fraction", type=float, default=0.2, help="Validation held-out fraction (default: 0.2).")
     p.add_argument("--seed", type=int, default=42, help="Random split seed.")
+    p.add_argument("--augment-rotation", type=float, default=0.0,
+                   help="Maximum random 3D rotation angle in degrees for IMU data augmentation (default: 0.0, disabled).")
     
     # Pipeline parameters (matches build_dataset.py)
     p.add_argument("--jitter-range", type=int, default=0, help="Jitter range for translation augmentation.")
@@ -160,7 +162,8 @@ def main(argv=None) -> int:
         epochs=args.epochs,
         batch_size=args.batch_size,
         output_dir=output_dir,
-        seed=args.seed
+        seed=args.seed,
+        augment_rotation=args.augment_rotation
     )
     
     # Print metrics summary
