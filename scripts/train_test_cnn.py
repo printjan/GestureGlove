@@ -112,7 +112,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--gyro-cutoff", type=float, default=12.0, help="Gyroscope cutoff in Hz.")
     p.add_argument("--gravity-removal", action="store_true", help="Replace raw acc with gravity-free linear acc.")
     p.add_argument("--orientation", default="complementary", choices=[m.value for m in OrientationMethod])
-    p.add_argument("--orientation-imus", nargs="+", default=["IMU1"], help="IMUs to compute roll/pitch for.")
+    p.add_argument("--orientation-imus", nargs="+", default=["IMU1", "IMU2"], help="IMUs to compute roll/pitch for.")
     p.add_argument("--diff", action="store_true", help="Add inter-IMU (finger-wrist) difference channels.")
     p.add_argument("--cross-correlation", action="store_true", help="Add cross-correlation scalar features.")
     p.add_argument("--statistics", action="store_true", help="Add per-channel statistical scalar features.")
