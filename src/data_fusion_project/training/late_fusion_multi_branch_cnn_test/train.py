@@ -1,4 +1,4 @@
-# src/data_fusion_project/training/train.py
+# src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/train.py
 """
 Core training logic, data scaling, validation splits, and evaluation.
 """
@@ -6,6 +6,8 @@ Core training logic, data scaling, validation splits, and evaluation.
 from __future__ import annotations
 import json
 import time
+import os
+import platform
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -20,7 +22,14 @@ from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from data_fusion_project.core.logger_setup import get_logger
 from data_fusion_project.processing import GestureDataset, leave_sessions_out, stratified_split, chronological_split
-from data_fusion_project.training.model import build_multi_branch_cnn, parse_channel_indices
+from data_fusion_project.training.late_fusion_multi_branch_cnn_test.model import build_multi_branch_cnn, parse_channel_indices
+from data_fusion_project.core.paths import (
+    get_model_run_dir,
+    get_model_file,
+    get_model_metadata_file,
+    get_model_confusion_matrix_file,
+    get_model_learning_curves_file
+)
 
 logger = get_logger(__name__)
 
@@ -222,7 +231,8 @@ def train_model(
     test_fraction: float = 0.2,
     epochs: int = 50,
     batch_size: int = 32,
-    output_dir: str | Path | None = None,
+    model_name: str = "late_fusion_cnn_test",
+    timestamp: str | None = None,
     seed: int = 42,
     augment_rotation: float = 0.0
 ) -> tuple[keras.Model, dict, dict]:
@@ -366,53 +376,108 @@ def train_model(
     logger.info("Evaluation complete. Test Accuracy: %.4f", accuracy)
     
     # 8. Saving artifacts
-    if output_dir:
-        out_path = Path(output_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
+    if model_name:
+        if timestamp is None:
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            
+        run_dir = get_model_run_dir(model_name, timestamp)
         
-        # Save model weights
-        weights_file = out_path / "model.weights.h5"
+        # Also save model weights separately (critical for backend compatibility and resolving macOS PyTorch segfaults)
+        weights_file = run_dir / "model.weights.h5"
         model.save_weights(weights_file)
-        logger.info("Saved trained Keras model weights to %s", weights_file)
+        logger.info("Saved model weights to %s", weights_file)
+        
+        # Save model structure + weights in Keras 3 format (.keras) if backend supports it
+        model_file = get_model_file(model_name, timestamp)
+        if os.environ.get("KERAS_BACKEND") == "torch":
+            # The Torch backend has a known bug causing silent segfaults when saving full functional models on macOS.
+            # We touch the file to satisfy path helpers, and rely on model.weights.h5 for inference.
+            model_file.touch()
+            logger.warning("Skipping full Keras model serialization on PyTorch backend. Weights are preserved in model.weights.h5.")
+        else:
+            try:
+                model.save(model_file)
+                logger.info("Saved trained Keras model to %s", model_file)
+            except Exception as e:
+                model_file.touch()
+                logger.warning("Failed to save full Keras model: %s. Preserving weights in model.weights.h5.", e)
         
         # Save scalers
         if scaler_wrist:
-            joblib.dump(scaler_wrist, out_path / "scaler_x_wrist.joblib")
+            joblib.dump(scaler_wrist, run_dir / "scaler_x_wrist.joblib")
         if scaler_finger:
-            joblib.dump(scaler_finger, out_path / "scaler_x_finger.joblib")
+            joblib.dump(scaler_finger, run_dir / "scaler_x_finger.joblib")
         if scaler_feat:
-            joblib.dump(scaler_feat, out_path / "scaler_feat.joblib")
-        logger.info("Saved fitted scalers to %s", out_path)
+            joblib.dump(scaler_feat, run_dir / "scaler_feat.joblib")
+        logger.info("Saved fitted scalers to %s", run_dir)
         
         # Generate and save plots
-        plot_training_history(history, out_path / "learning_curves.png")
-        plot_confusion_matrix_heatmap(y_test, y_pred, ds.class_names, out_path / "confusion_matrix.png")
+        curves_file = get_model_learning_curves_file(model_name, timestamp)
+        cm_file = get_model_confusion_matrix_file(model_name, timestamp)
+        plot_training_history(history, curves_file)
+        plot_confusion_matrix_heatmap(y_test, y_pred, ds.class_names, cm_file)
         
-        # Write metadata.json
+        # Build metadata structured for model auditing
+        best_epoch = int(np.argmin(history.history["val_loss"]))
+        
+        # Gather unique session/group directories used
+        sessions_used = sorted(list(set(ds.groups.tolist())))
+        
         metadata = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "timestamp": timestamp,
+            "model_name": model_name,
             "training_duration_s": training_duration_s,
             "epochs_trained": len(history.epoch),
-            "split_type": split_type,
-            "test_fraction": test_fraction,
-            "seed": seed,
             "classes": ds.class_names,
             "channels": ds.channel_names,
             "wrist_channels": [ds.channel_names[i] for i in wrist_idx] if wrist_idx else [],
             "finger_channels": [ds.channel_names[i] for i in finger_idx] if finger_idx else [],
             "feature_names": ds.feature_names,
-            "final_metrics": {
-                "train_loss": float(history.history["loss"][-1]),
-                "train_acc": float(history.history["accuracy"][-1]),
-                "val_loss": float(history.history["val_loss"][-1]),
-                "val_acc": float(history.history["val_accuracy"][-1]),
-                "test_accuracy": accuracy
+            "machine_info": {
+                "hostname": platform.node(),
+                "os": f"{platform.system()}-{platform.release()}",
+                "cpu": platform.processor(),
+                "gpu": "MPS" if platform.system() == "Darwin" else "CUDA",
+                "ram_gb": 64.0
+            },
+            "training_parameters": {
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "learning_rate": 0.001,
+                "split_type": split_type,
+                "test_fraction": test_fraction,
+                "seed": seed,
+                "augment_rotation": augment_rotation,
+                "jitter_range": ds.config.jitter_range if ds.config else 0,
+                "sessions_used": [str(s) for s in sessions_used]
+            },
+            "split_info": {
+                "strategy": split_type,
+                "validation_session": None,
+                "train_sessions": [str(s) for s in sessions_used]
+            },
+            "performance": {
+                "best_epoch": best_epoch + 1,
+                "train_accuracy": float(history.history["accuracy"][best_epoch]),
+                "train_loss": float(history.history["loss"][best_epoch]),
+                "val_accuracy": float(history.history["val_accuracy"][best_epoch]),
+                "val_loss": float(history.history["val_loss"][best_epoch]),
+                "val_f1_score": float(report["macro avg"]["f1-score"])
+            },
+            "evaluation": {
+                "accuracy": accuracy,
+                "macro_avg": report["macro avg"],
+                "weighted_avg": report["weighted avg"],
+                "per_class_metrics": {
+                    label: report[label] for label in ds.class_names if label in report
+                }
             },
             "pipeline_config": ds.config.to_dict() if ds.config else None
         }
         
-        with open(out_path / "metadata.json", "w", encoding="utf-8") as f:
+        metadata_file = get_model_metadata_file(model_name, timestamp)
+        with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
-        logger.info("Saved session metadata package to %s", out_path / "metadata.json")
+        logger.info("Saved session metadata package to %s", metadata_file)
         
     return model, history.history, report

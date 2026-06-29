@@ -78,3 +78,27 @@ For scalar features that summarize the entire window (e.g. cross-correlation coe
   finger_indices = [i for i, name in enumerate(dataset.channel_names) if "IMU2" in name]
   ```
   This ensures that if we configure our features to exclude specific channels, the routing remains correct without requiring a rewrite of the model architecture code.
+
+### D. Spatial-Kinematic Decoupling (Post-Audit Synthesis)
+* **Justification:** Random Forest Gini ranking in [feature_filter_analysis_results.json](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/data_analysis/feature_filter_analysis_results.json) revealed that inter-IMU difference features (`diff_accZ`, `diff_accY`) hold over **30%** of decision boundary splitting weight. This confirms that arm translation (wrist IMU1) and hand posture (finger relative to wrist) are kinematically decoupled. The late fusion multi-branch model is uniquely suited for this: Branch 1 is fed wrist-only dynamics (arm sweeps), Branch 2 processes finger-relative differences, and the MLP receives short-term relative yaw (highpass-filtered at 0.5 Hz prior to integration to prevent linear drift). This decodes arm vs. hand dynamics in parallel pathways prior to late fusion.
+
+---
+
+## 4. Experiment Directory & Saving Structure
+
+Every training session for this model must be saved in accordance with the project's experiment directory structure defined in the `README.md`:
+
+```
+models/
+└── late_fusion_multi_branch_1d_cnn/                 # Model identifier folder
+    └── training_session_<index>_<timestamp>/        # Sequential session (e.g., training_session_0_20260629_020000)
+        ├── model.keras                              # Saved trained Keras model weights and architecture
+        ├── model_metadata.json                      # JSON file containing training run audit properties
+        ├── confusion_matrix.png                     # Validation split confusion matrix plot
+        └── learning_curves.png                      # Training/validation loss and accuracy curves
+```
+
+* **Sequential Indexing**: The training script must dynamically query existing directories under `models/late_fusion_multi_branch_1d_cnn/` to determine the next available sequential integer `<index>` (starting at `0` for the first run).
+* **Metadata Logging**: The `model_metadata.json` file must capture system info, hyperparameters, training dataset stats, and per-class precision, recall, and F1-score evaluation metrics.
+
+

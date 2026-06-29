@@ -135,18 +135,58 @@ def get_next_recording_file(gesture_name: str, session_name: str) -> Path:
     return session_dir / f"{next_index:05d}.csv"
 
 
+def get_model_run_dir(model_name: str, timestamp: str) -> Path:
+    """
+    Get the directory for a specific model training run (e.g. models/<model_name>/training_session_<index>_<timestamp>/).
+    """
+    model_dir = MODELS_DIR / model_name
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    # If a training session folder with this exact timestamp already exists, reuse it
+    for p in model_dir.glob(f"training_session_*_{timestamp}"):
+        if p.is_dir():
+            return p
+
+    # Find the next sequential index
+    existing_indices = []
+    for p in model_dir.glob("training_session_*"):
+        if p.is_dir():
+            parts = p.name.split("_")
+            if len(parts) >= 4 and parts[2].isdigit():
+                existing_indices.append(int(parts[2]))
+
+    next_index = max(existing_indices, default=-1) + 1
+    run_dir = model_dir / f"training_session_{next_index}_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+
 def get_model_file(model_name: str, timestamp: str) -> Path:
     """
-    Get the path to a trained model file (e.g. models/<model_name>_<timestamp>.keras).
+    Get the path to a trained model file (e.g. models/<model_name>/training_session_<index>_<timestamp>/model.keras).
     """
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    return MODELS_DIR / f"{model_name}_{timestamp}.keras"
+    return get_model_run_dir(model_name, timestamp) / "model.keras"
 
 
 def get_model_metadata_file(model_name: str, timestamp: str) -> Path:
     """
-    Get the path to a trained model's metadata JSON file (e.g. models/<model_name>_<timestamp>_metadata.json).
+    Get the path to a trained model's metadata JSON file (e.g. models/<model_name>/training_session_<index>_<timestamp>/model_metadata.json).
     """
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    return MODELS_DIR / f"{model_name}_{timestamp}_metadata.json"
+    return get_model_run_dir(model_name, timestamp) / "model_metadata.json"
+
+
+def get_model_confusion_matrix_file(model_name: str, timestamp: str) -> Path:
+    """
+    Get the path to the confusion matrix plot for a model training run.
+    """
+    return get_model_run_dir(model_name, timestamp) / "confusion_matrix.png"
+
+
+def get_model_learning_curves_file(model_name: str, timestamp: str) -> Path:
+    """
+    Get the path to the learning curves plot for a model training run.
+    """
+    return get_model_run_dir(model_name, timestamp) / "learning_curves.png"
+
 

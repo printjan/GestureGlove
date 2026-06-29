@@ -37,7 +37,7 @@ elif "KERAS_BACKEND" not in os.environ:
     else:
         os.environ["KERAS_BACKEND"] = "tensorflow"
 
-from data_fusion_project.core.paths import DATA_DIR, MODELS_DIR
+from data_fusion_project.core.paths import DATA_DIR, MODELS_DIR, get_model_run_dir
 from data_fusion_project.processing import (
     load_dataset,
     PipelineConfig,
@@ -47,7 +47,7 @@ from data_fusion_project.processing import (
     FilterType,
     OrientationMethod,
 )
-from data_fusion_project.training.train import train_model
+from data_fusion_project.training.late_fusion_multi_branch_cnn_test.train import train_model
 
 
 # ======================================================================================================================
@@ -89,7 +89,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     
     # Core directories & naming
     p.add_argument("--data-dir", default=None, help="Data root directory (defaults to project data/).")
-    p.add_argument("--model-name", default="late_fusion_cnn_v1", help="Target model subfolder inside models/.")
+    p.add_argument("--model-name", default="late_fusion_cnn_test", help="Target model subfolder inside models/.")
     p.add_argument("--backend", default=None, choices=["tensorflow", "torch", "jax"],
                    help="Keras backend to use (automatically defaults to 'torch' on macOS and 'tensorflow' elsewhere).")
     
@@ -127,9 +127,11 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     pipeline_cfg = build_pipeline_config(args)
     
-    # Define output folder inside central project models/ directory
-    output_dir = MODELS_DIR / args.model_name
-    print(f"Target model save location: {output_dir}\n")
+    # Generate a run timestamp and resolve run directory
+    import time
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    run_dir = get_model_run_dir(args.model_name, timestamp)
+    print(f"Target model run save location: {run_dir}\n")
     
     # Load dataset
     print("Loading gesture dataset...")
@@ -161,7 +163,8 @@ def main(argv=None) -> int:
         test_fraction=args.test_fraction,
         epochs=args.epochs,
         batch_size=args.batch_size,
-        output_dir=output_dir,
+        model_name=args.model_name,
+        timestamp=timestamp,
         seed=args.seed,
         augment_rotation=args.augment_rotation
     )

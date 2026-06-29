@@ -63,20 +63,25 @@ def build_channels(processed: dict, orientation: dict, config: FeatureConfig, fs
                 names.append(f"{imu}_gyr{ax}")
         
         # Accelerometer Magnitudes
-        if config.include_accelerometer_magnitude:
-            columns.append(np.linalg.norm(acc, axis=1))
-            names.append(f"{imu}_accelerometer_magnitude")
-        elif config.include_acc_magnitude:
-            columns.append(np.linalg.norm(acc, axis=1))
-            names.append(f"{imu}_acc_mag")
+        if config.include_accelerometer_magnitude or config.include_acc_magnitude:
+            acc_mag = np.linalg.norm(acc, axis=1)
+            from data_fusion_project.processing.filters import apply_filter
+            from data_fusion_project.processing.config import FilterType
+            # Lowpass filter the squared/rectified magnitude to create a smooth physical envelope
+            acc_mag = apply_filter(acc_mag[:, np.newaxis], FilterType.LOWPASS, cutoff_hz=8.0, fs=fs, order=2)[:, 0]
+            columns.append(acc_mag)
+            name = f"{imu}_accelerometer_magnitude" if config.include_accelerometer_magnitude else f"{imu}_acc_mag"
+            names.append(name)
             
         # Gyroscope Magnitudes
-        if config.include_gyroscope_magnitude:
-            columns.append(np.linalg.norm(gyr, axis=1))
-            names.append(f"{imu}_gyroscope_magnitude")
-        elif config.include_gyro_magnitude:
-            columns.append(np.linalg.norm(gyr, axis=1))
-            names.append(f"{imu}_gyr_mag")
+        if config.include_gyroscope_magnitude or config.include_gyro_magnitude:
+            gyr_mag = np.linalg.norm(gyr, axis=1)
+            from data_fusion_project.processing.filters import apply_filter
+            from data_fusion_project.processing.config import FilterType
+            gyr_mag = apply_filter(gyr_mag[:, np.newaxis], FilterType.LOWPASS, cutoff_hz=8.0, fs=fs, order=2)[:, 0]
+            columns.append(gyr_mag)
+            name = f"{imu}_gyroscope_magnitude" if config.include_gyroscope_magnitude else f"{imu}_gyr_mag"
+            names.append(name)
 
         # Linear Jerk
         if config.include_linear_jerk:
@@ -102,7 +107,12 @@ def build_channels(processed: dict, orientation: dict, config: FeatureConfig, fs
         # Short-Term Integrated Relative Yaw
         if config.include_relative_yaw:
             dt = 1.0 / fs
-            rel_yaw = np.cumsum(gyr[:, 2]) * dt
+            gyr_z = gyr[:, 2]
+            from data_fusion_project.processing.filters import apply_filter
+            from data_fusion_project.processing.config import FilterType
+            # Apply a high-pass filter at 0.5 Hz to remove DC offsets prior to integration and prevent linear drift
+            gyr_z_hp = apply_filter(gyr_z[:, np.newaxis], FilterType.HIGHPASS, cutoff_hz=0.5, fs=fs, order=2)[:, 0]
+            rel_yaw = np.cumsum(gyr_z_hp) * dt
             if not orientation_degrees:
                 rel_yaw = rel_yaw * (np.pi / 180.0)
             columns.append(rel_yaw)

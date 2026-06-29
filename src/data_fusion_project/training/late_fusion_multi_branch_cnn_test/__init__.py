@@ -1,0 +1,3 @@
+
+
+from data_fusion_project.training.late_fusion_multi_branch_cnn_test.model import build_multi_branch_cnn, parse_channel_indices

@@ -43,9 +43,9 @@ from data_fusion_project.processing import (
     estimate_calibration
 )
 from data_fusion_project.processing.config import FilterType, OrientationMethod
-from data_fusion_project.training.model import build_multi_branch_cnn
+from data_fusion_project.training.late_fusion_multi_branch_cnn_test.model import build_multi_branch_cnn
 # Keep TimeSeriesScaler class loaded for joblib deserialization
-from data_fusion_project.training.train import TimeSeriesScaler
+from data_fusion_project.training.late_fusion_multi_branch_cnn_test.train import TimeSeriesScaler
 
 
 def parse_args():
@@ -53,7 +53,7 @@ def parse_args():
     parser.add_argument(
         "--model-dir",
         type=str,
-        default=str(PROJECT_ROOT / "models" / "late_fusion_cnn_v1"),
+        default=str(PROJECT_ROOT / "models" / "late_fusion_cnn_test"),
         help="Path to the trained model directory."
     )
     parser.add_argument(
@@ -167,21 +167,39 @@ def print_prediction(class_name, prob, threshold):
 def main():
     args = parse_args()
     model_dir = Path(args.model_dir)
-    if not model_dir.is_absolute() and not model_dir.is_dir():
-        # Fallback to checking relative to the project root
-        project_relative = PROJECT_ROOT / model_dir
-        if project_relative.is_dir():
-            model_dir = project_relative
+    
+    # Resolve the model directory (fallback to project root if relative)
+    if not model_dir.is_absolute() and not model_dir.exists():
+        fallback_path = PROJECT_ROOT / model_dir
+        if fallback_path.exists():
+            model_dir = fallback_path
 
     ui.hr(title="Real-Time CNN Inference Prototype")
-    ui.info(f"Target model directory: {model_dir}")
     
-    if not model_dir.is_dir():
+    if not model_dir.exists():
         ui.error(f"Model directory not found: {model_dir}")
         sys.exit(1)
 
+    # If this is the base directory containing sequential session runs, find the latest session run
+    sessions = sorted(
+        [p for p in model_dir.glob("training_session_*") if p.is_dir()],
+        key=lambda p: p.name
+    )
+    if sessions:
+        model_dir = sessions[-1]
+        ui.info(f"Resolved to latest training run session directory: {model_dir}")
+    else:
+        ui.info(f"Target model directory: {model_dir}")
+
     # 1. Load Model Metadata and Config
-    metadata_path = model_dir / "metadata.json"
+    metadata_path = model_dir / "model_metadata.json"
+    if not metadata_path.exists():
+        metadata_path = model_dir / "metadata.json"
+        
+    if not metadata_path.exists():
+        ui.error(f"Model metadata file (model_metadata.json or metadata.json) not found in {model_dir}")
+        sys.exit(1)
+        
     with open(metadata_path, "r", encoding="utf-8") as f:
         metadata = json.load(f)
         

@@ -124,12 +124,12 @@ data_fusion_project/
 │   │   │   │   ├── 00001.png                        # plot of raw recording with vertical start/end markers
 │   │   │   │   └── ...
 ├── models/
-│   ├── <model_name>_<timestamp>/
-│   │   ├── confusion_matrix.png
-│   │   ├── <model_name>_<timestamp>.
-│   │   ├── <model_name>_<timestamp>.
-│   │   ├── <model_name>_<timestamp>.keras               # saved trained Keras model structure & weights
-│   │   └── <model_name>_<timestamp>_metadata.json       # JSON file containing training run audit properties
+│   ├── <model_name>/
+│   │   ├──training_session_<index>_<timestamp>/            # one particular training session for that model
+│   │   │   ├── confusion_matrix.png                        # confusion matrix of the trained model
+│   │   │   ├── learning_curves.png                         # learning curves of the trained model
+│   │   │   ├── model_metadata.json                         # JSON file containing training run audit properties
+│   │   │   └── model.keras                                 # saved trained Keras model structure & weights
 ```
 
 ### Data set structure
@@ -167,7 +167,7 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
 }
 ```
 
-### Model Metadata Properties Structure (`<model_name>_<timestamp>_metadata.json`)
+### Model Metadata Properties Structure (`model_metadata.json`)
 
 ```json
 {
@@ -177,7 +177,8 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
     "hostname": "MacBook-Pro",
     "os": "macOS-14.5",
     "cpu": "Apple M3 Max",
-    "gpu": "Apple M3 Max (Unified Memory)"
+    "gpu": "Apple M3 Max (Unified Memory)",
+    "ram_gb": 64.0
   },
   "training_parameters": {
     "epochs": 50,
@@ -205,12 +206,43 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
     },
     "sessions_used": ["session_0", "session_1"]
   },
+  "split_info": {
+    "strategy": "Leave-One-Session-Out (LOSO)",
+    "validation_session": "session_1",
+    "train_sessions": ["session_0"]
+  },
   "performance": {
     "best_epoch": 42,
     "train_accuracy": 0.985,
+    "train_loss": 0.045,
     "val_accuracy": 0.962,
     "val_loss": 0.125,
     "val_f1_score": 0.961
+  },
+  "evaluation": {
+    "accuracy": 0.962,
+    "macro_avg": {
+      "precision": 0.963,
+      "recall": 0.960,
+      "f1-score": 0.961,
+      "support": 90
+    },
+    "weighted_avg": {
+      "precision": 0.964,
+      "recall": 0.962,
+      "f1-score": 0.962,
+      "support": 90
+    },
+    "per_class_metrics": {
+      "none": { "precision": 0.98, "recall": 1.0, "f1-score": 0.99, "support": 24 },
+      "swipe_left": { "precision": 0.95, "recall": 0.90, "f1-score": 0.92, "support": 10 },
+      "swipe_right": { "precision": 0.91, "recall": 1.0, "f1-score": 0.95, "support": 10 },
+      "circle_cw": { "precision": 1.0, "recall": 0.90, "f1-score": 0.95, "support": 10 },
+      "circle_ccw": { "precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 10 },
+      "fist": { "precision": 0.89, "recall": 0.89, "f1-score": 0.89, "support": 9 },
+      "jerk_down": { "precision": 1.0, "recall": 0.89, "f1-score": 0.94, "support": 9 },
+      "jerk_up": { "precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 8 }
+    }
   }
 }
 ```

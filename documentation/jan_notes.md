@@ -263,6 +263,7 @@ conda activate data_fusion_env_1
 ---
 
 
+
 ## Pitch
 
 - 5 min (auf keinen Fall mehr).
@@ -290,20 +291,125 @@ conda activate data_fusion_env_1
 
 
 
-## Recording Pipeline
+### Project strategy
 
 
 
---- 
+
+## Analyze the data
+
+
+Go over the jupyter notebook analyzing the features and filters we plan on using to train and run our models again - Check if it really matches all the requirements we specified for it and make adustments where needed!
+
+Here are the features with their filters as specified in the `model_training.md`:
+```
+## Real-Time Pre-Computed Features & Filtering Requirements
+
+
+### First-Order Time Derivatives (Jerk & Angular Acceleration)
+
+* **Linear Jerk ($J_t$)**:
+  $$J_t = \frac{\mathbf{a}_t - \mathbf{a}_{t-1}}{\Delta t}$$
+* **Angular Acceleration ($\alpha_t$)**:
+  $$\alpha_t = \frac{\mathbf{g}_t - \mathbf{g}_{t-1}}{\Delta t}$$
+* **Benefit**: Jerk is highly discriminative for "snappy" vs. "smooth" gestures. For example, `jerk_up` has an extremely high transient movement-energy peak, whereas `circle_cw` has a low, continuous movement-energy profile.
+* **Filtering Strategy:** Differentiation acts as a high-pass operation that multiplies high-frequency noise. Jerk **must be low-pass filtered** (either by smoothing raw accelerometer inputs at 8.0 Hz prior to differentiation, or by smoothing the computed jerk channel itself) to prevent complete noise saturation.
+
+
+### Inter-IMU Differential Features (Finger vs. Wrist)
+
+* **Relative Acceleration ($\Delta a$) & Relative Rotation ($\Delta g$)**:
+  $$\Delta a = \mathbf{a}_{finger} - \mathbf{a}_{wrist}, \quad \Delta g = \mathbf{g}_{finger} - \mathbf{g}_{wrist}$$
+* **Benefit**: Distinguishes **arm gestures** from **hand gestures**.
+  * During a `swipe_right`, the whole arm moves as a rigid body: $\Delta a \approx 0$ and $\Delta g \approx 0$.
+  * During a `fist` or finger gesture, only the finger moves relative to the wrist: $\Delta a \gg 0$.
+* **Filtering Strategy:** Relies on low-pass filtered raw inputs (8.0 Hz for accelerometer, 12.0 Hz for gyroscope) to keep differentiation clean and prevent noise propagation between the two sensors.
+* **Mounting Alignment Assumption:** This simple axis-wise subtraction assumes that the two IMUs (Wrist and Finger) are mounted with **parallel coordinate axes** (specifically, both devices must have their USB-C ports pointing backward and downward). If the sensors were mounted with different orientations, the subtraction would yield arbitrary vector directions. This strict physical setup constraint replaces the need for expensive real-time coordinate transformation matrix multiplications.
+
+
+### Short-Term Window Integrals (Relative Yaw)
+
+While absolute Yaw cannot be anchored without a magnetometer, relative yaw change ($\Delta \psi$) over the short gesture window ($1.5\text{ s}$) is highly accurate and drift-free.
+
+* **Methodology**: Integrate the z-gyroscope channel over the active window:
+  $$\Delta \psi = \sum_{t \in W} g_{z,t} \cdot \Delta t$$
+* **Benefit**: Provides clear directional mapping in the horizontal plane (distinguishing clock rotations and horizontal sweeps).
+* **Note**: Absolute Yaw accumulates continuous non-linear drift. Will corrupt decision boundaries over time without a magnetometer.
+* **Filtering Strategy:** The input gyroscope signal must be zero-bias calibrated and high-pass filtered (0.5 Hz cutoff) prior to integration to remove the DC offset and prevent linear drift over the 150-sample window.
+
+
+### Kinematic Invariants (Magnitudes)
+
+* **Accelerometer Magnitude ($a_{mag}$)**:
+  $$a_{mag} = \sqrt{a_x^2 + a_y^2 + a_z^2}$$
+  * *Benefit*: Independent of sensor orientation. Under static conditions (no motion), $a_{mag} \approx 1.0g$. Any deviation ($|a_{mag} - 1.0| > \epsilon$) indicates linear acceleration, which is a perfect trigger for separating active gestures from `none`.
+* **Gyroscope Magnitude ($g_{mag}$)**:
+  $$g_{mag} = \sqrt{g_x^2 + g_y^2 + g_z^2}$$
+  * *Benefit*: Captures net angular velocity. Distinguishes rotational movements (like `circle_cw`) from purely linear movements (like `jerk_down`).
+* **Filtering Strategy:** Squaring rectifies and amplifies high-frequency noise peaks. Magnitude outputs should be low-pass filtered to create a smooth, clean envelope representing physical motion energy.
+
+
+### Gravity-Free Linear Acceleration ($a_{linear}$)
+
+The raw accelerometer measures both physical acceleration and the static gravity vector ($1.0g$).
+
+* **Methodology**: Use the calculated pitch ($\theta$) and roll ($\phi$) from your sensor fusion filter (Kalman/Complementary) to project gravity out:
+  $$\mathbf{a}_{linear} = \mathbf{a}_{raw} - \mathbf{g}_{rotated}$$
+* **Benefit**: Distinguishes directional gestures (like `swipe_left` vs `swipe_right`) from simple posture rotations.
+* **Filtering Strategy:** Raw accelerometer signals and the estimated orientation angles must be low-pass filtered to align their phase before performing gravity projection, preventing artifacts from temporal lag.
+```
+
+When we defined the features we also developed diefferent mechanisms of how we could evaluate their suitability for our project goals:
+```
+## Real-Time Pre-Computed Features & Selection Rationale
+
+
+### A. Feature Selection Strategy: Overengineering vs. Real-Time Efficiency
+
+* **The Theoretical Reality:** 
+  * In modern deep learning, a sufficiently deep CNN can theoretically learn to extract optimal spatial-temporal representations directly from raw multi-channel IMU data ($a_x, a_y, a_z, g_x, g_y, g_z$). 
+  * But pre-calculating physical invariants and kinematic features can dramatically reduce the required network complexity, speed up convergence, and increase robustness to sensor orientation deviations.
+  * Gradient descent naturally suppresses useless or noisy features by decaying their weight parameters, meaning pre-training feature selection is not strictly *necessary* for the model to work.
+
+* **The Practical Constraints of Real-Time:** In our target application (real-time PowerPoint control running continuously), feeding raw data and relying entirely on the network to figure it out has three severe drawbacks:
+  1. **Computational Overhead & Latency:** Real-time inference on a host machine runs a continuous sliding window (in our case at 100 Hz). Pre-calculating complex features (like Kalman-filtered Euler angles or sliding derivatives) consumes precious floating-point CPU cycles, adding latency.
+  2. **Curse of Dimensionality:** With small training sets, adding too many noisy or redundant input channels increases model parameter size, raising the risk of overfitting.
+  3. **Sensor-Defect Sensitivity (Yaw Drift):** Standard IMUs (without magnetometers) suffer from continuous yaw drift. If the absolute yaw is fed to a model, the CNN will overfit to the absolute angle of the room, failing after just a few minutes of use as drift accumulates.
+
+* **The Goal:** We want a **minimalist, highly discriminative feature set** where every channel is physically justified and computed in $O(1)$ time complexity per sample step.
+
+
+
+### How to Analyze Feature Utility Quantitatively
+
+To avoid subjective overengineering, we can audit candidate features before settling on the final set:
+
+1. **Mutual Information (MI) Regression/Classification:** Calculate the Mutual Information score between each candidate feature channel and the target gesture labels. Channels with MI $\to 0$ are candidates for exclusion.
+2. **Random Forest Gini Importance:** Flatten the windows and train a lightweight Random Forest. Review the feature importance weights to identify channels that do not contribute to splitting decision boundaries.
+3. **Ablation Studies:** During early training runs, systematically train the CNN with and without specific feature groups (e.g. Raw + Differentials vs. Raw + Differentials + Jerk) and check if validation accuracy changes significantly.
+```
+
+- Add detailed explanations for each experiment detailing what exaclty we want to investigate with each test and how we want to investigate it with that particular test!
+- Include the dynamic dataset loading mechanism provided by the data_processing pipeline!
+- Fully utilize the functionality the python module data_fusion_project.core provides!
+
+Implement these tests in your notebook and analyze the results in relation to the projects ultimate goals outlined in `README.md`. Specifically analyze the results in relation to the future steps and experiments we have defined in `model_training.md` - this will give us a better understanding of what we can expect from the different features and filters we plan on using to train and run our models and if we should adjust our strategy accordingly.  Document your analysis in a clear and concise manner, with appropriate visualizations and explanations.
+
+Directly incoporate any neccessary adjustments into `model_training.md` as you see fit so the notebooks and the documentation are in sync!
 
 
 
 ## CNN Implementation
 
 
+### Update CNN Training implementation plans
+
+Earlier we defined three implementation plans for three different CNN architectures we plan on comparing on our dataset in `early_fusion_single_branch_1d_cnn.md`, `late_fusion_multi_branch_1d_cnn.md` and `slef_attention_temporal_transformer.md`. Use the knowledge we gathered while auditing our dataset and the features it produces to update these implementation plans. Do not forget to update `model_training.md` accordingly if neccessary! Respect the structure we have defined for storing our model training experiment in the `README.md`. Do not repeat yourself and only add or update what is neccessary. 
+
 
 
 ---
+
 
 
 ## Real time inference

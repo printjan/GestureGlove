@@ -132,40 +132,6 @@ To avoid subjective overengineering, we can audit candidate features before sett
 
 
 
----
-
-
-
-## Sensor Bias Calibration & Offset Correction
-
-To correct physical sensor defects and offsets, the pipeline runs a **static calibration correction stage** before any filtering or feature calculations:
-
-1. **Gyroscope Zero-Bias Subtraction:** Raw gyroscopes read small non-zero values even when held completely still. During static calibration (recorded for 5 seconds), the pipeline calculates the mean value ($\bar{\mathbf{g}}_{bias}$) for each axis. During subsequent dynamic recordings, this static offset is subtracted: $\mathbf{g}_{corrected} = \mathbf{g}_{raw} - \bar{\mathbf{g}}_{bias}$. This removes constant offsets, which is critical to preventing relative yaw integration from drifting.
-2. **Accelerometer Scale Normalization:** The gravity vector magnitude $g$ is estimated from the resting accelerometer values. The accelerometer channels are divided by this scale factor: $\mathbf{a}_{normalized} = \mathbf{a}_{raw} / g$, mapping 1 g of gravity to exactly 1.0 units.
-3. **Dynamic Calibration Mapping:** A single recording session has multiple static calibrations (recorded every `max_samples_before_recalibration` gestures to adjust for thermal drift). The processing pipeline dynamically reads the `"recalibrations"` log in `recording_session.json` and associates each gesture sample (e.g., sample $15$) with the **closest prior calibration file** (e.g., the calibration recorded at sample index $0$). This ensures the calibration offsets are always locally fresh.
-
-
-## Integration of Calibration: Training vs. Real-Time Inference
-
-It is critical that the calibration pipeline used during offline model training matches the real-time classification runtime:
-
-* **Offline Training Pipeline:**
-  * When loading the dataset via `load_dataset`, the pipeline reads the `.csv` files for calibration.
-  * It computes the calibration parameters (bias values and scaling factors) from each static file.
-  * It subtracts the gyro bias and scales the accelerometer values for all samples associated with that calibration run.
-  * This ensures the CNN models are trained on **perfectly clean, zero-bias, gravity-normalized waveforms**, allowing the model to focus purely on the shape and trajectory of the gesture, decoupled from hardware-specific variances.
-* **Real-Time Inference Pipeline:**
-  * In the continuous classification runtime (e.g., running sliding-window predictions to control PowerPoint), the incoming sensor stream contains raw, uncorrected offsets.
-  * At startup, the user is prompted to run a **5-second static calibration pose** (holding still). The system computes the current real-time gyro bias and gravity scale factor.
-  * These real-time calibration offsets are continuously subtracted/scaled from every incoming sliding window *before* the window is passed to the CNN.
-  * This guarantees that the inputs entering the model at runtime match the mathematical distribution it saw during training, preventing prediction degradation due to sensor drift or placement variations.
-
-
-
----
-
-
-
 ## Real-Time Pre-Computed Features & Filtering Requirements
 
 
@@ -220,6 +186,36 @@ The raw accelerometer measures both physical acceleration and the static gravity
   $$\mathbf{a}_{linear} = \mathbf{a}_{raw} - \mathbf{g}_{rotated}$$
 * **Benefit**: Distinguishes directional gestures (like `swipe_left` vs `swipe_right`) from simple posture rotations.
 * **Filtering Strategy:** Raw accelerometer signals and the estimated orientation angles must be low-pass filtered to align their phase before performing gravity projection, preventing artifacts from temporal lag.
+
+
+
+---
+
+
+
+## Sensor Bias Calibration & Offset Correction
+
+To correct physical sensor defects and offsets, the pipeline runs a **static calibration correction stage** before any filtering or feature calculations:
+
+1. **Gyroscope Zero-Bias Subtraction:** Raw gyroscopes read small non-zero values even when held completely still. During static calibration (recorded for 5 seconds), the pipeline calculates the mean value ($\bar{\mathbf{g}}_{bias}$) for each axis. During subsequent dynamic recordings, this static offset is subtracted: $\mathbf{g}_{corrected} = \mathbf{g}_{raw} - \bar{\mathbf{g}}_{bias}$. This removes constant offsets, which is critical to preventing relative yaw integration from drifting.
+2. **Accelerometer Scale Normalization:** The gravity vector magnitude $g$ is estimated from the resting accelerometer values. The accelerometer channels are divided by this scale factor: $\mathbf{a}_{normalized} = \mathbf{a}_{raw} / g$, mapping 1 g of gravity to exactly 1.0 units.
+3. **Dynamic Calibration Mapping:** A single recording session has multiple static calibrations (recorded every `max_samples_before_recalibration` gestures to adjust for thermal drift). The processing pipeline dynamically reads the `"recalibrations"` log in `recording_session.json` and associates each gesture sample (e.g., sample $15$) with the **closest prior calibration file** (e.g., the calibration recorded at sample index $0$). This ensures the calibration offsets are always locally fresh.
+
+
+## Integration of Calibration: Training vs. Real-Time Inference
+
+It is critical that the calibration pipeline used during offline model training matches the real-time classification runtime:
+
+* **Offline Training Pipeline:**
+  * When loading the dataset via `load_dataset`, the pipeline reads the `.csv` files for calibration.
+  * It computes the calibration parameters (bias values and scaling factors) from each static file.
+  * It subtracts the gyro bias and scales the accelerometer values for all samples associated with that calibration run.
+  * This ensures the CNN models are trained on **perfectly clean, zero-bias, gravity-normalized waveforms**, allowing the model to focus purely on the shape and trajectory of the gesture, decoupled from hardware-specific variances.
+* **Real-Time Inference Pipeline:**
+  * In the continuous classification runtime (e.g., running sliding-window predictions to control PowerPoint), the incoming sensor stream contains raw, uncorrected offsets.
+  * At startup, the user is prompted to run a **5-second static calibration pose** (holding still). The system computes the current real-time gyro bias and gravity scale factor.
+  * These real-time calibration offsets are continuously subtracted/scaled from every incoming sliding window *before* the window is passed to the CNN.
+  * This guarantees that the inputs entering the model at runtime match the mathematical distribution it saw during training, preventing prediction degradation due to sensor drift or placement variations.
 
 
 
@@ -341,28 +337,28 @@ In wearable Human Activity Recognition (HAR) and multi-sensor fusion literature 
 
 We will implement and empirically compare three distinct architectures to determine the best balance between classification accuracy, memory footprint, and real-time execution speed:
 
-#### 1. Early Fusion Single-Branch Conv1D CNN
-* **Structure:** All 28 input channels (raw + calculated features) are stacked into a single tensor of shape `(150, 28)` and fed into a single Conv1D pipeline.
+#### 1. Early Fusion Single-Branch Conv1D CNN (see [early_fusion_single_branch_1d_cnn.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/early_fusion_single_branch_1d_cnn.md))
+* **Structure:** Stacks all input channels into a single tensor of shape `(150, C)` (where `C` is the optimized 18-channel feature set rather than the raw 28 coordinate channels) and feeds it to a single Conv1D pipeline.
 * **Pros:** Minimum parameter count, easiest to implement and run.
 * **Cons:** Prone to noise propagation; filters cannot optimize independently for finger vs. wrist coordinates.
-* **Features:** Tolerates raw inputs and highly correlated features (like raw gravity vectors + magnitudes) because the network's convolutional filters can jointly learn to ignore or select relevant combinations.
-* **Filters:** Can tolerate raw and noisy signals because the kernels learn to co-filter, but benefits from global low-pass filtering to accelerate training convergence and prevent overfitting to device-specific noise.
+* **Features:** Auditing has shown that using the **18 optimized orientation-invariant features** (excluding raw coordinate baselines) improves generalization accuracy on unseen sessions by preventing session-to-session baseline shifts.
+* **Filters:** Jerk derivatives are lowpass-filtered (8 Hz), and relative yaw is integrated on 0.5 Hz highpass-filtered gyroscopes to prevent linear integration drift.
 
-#### 2. Late Fusion Multi-Branch Conv1D CNN
+#### 2. Late Fusion Multi-Branch Conv1D CNN (see [late_fusion_multi_branch_1d_cnn.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/late_fusion_multi_branch_1d_cnn.md))
 * **Structure:** Parallel Conv1D encoders for the wrist channels and finger channels, and a separate Dense MLP for statistical summary features, concatenated late before classification layers.
 * **Pros:** Highly accurate; prevents spatial feature dilution; structurally matches the physical setup.
 * **Cons:** Slightly larger parameter footprint.
 * **Features:** 
-  * Requires explicit spatial partitioning. The features must be grouped into subsets (e.g., wrist-only channels vs. finger-only channels) and routed to specific inputs.
-  * Alternatively we can also establish a `features` branch next to the `wrist` and `finger` branches, which is only fed the pre-computed real-time features.
-* **Filters:** Specialized spatial filter groups (wrist branch, finger branch) are processed in parallel heads. All input channels should be low-pass filtered (8.0 Hz for accelerometers, 12.0 Hz for gyroscopes) to prevent inter-sensor noise propagation before concatenation.
+  * Based on our Random Forest Gini importance audit, wrist-finger differences carry over **30%** of decision boundary splitting weight. We route wrist-only dynamics to Branch 1, finger-relative differences to Branch 2, and short-term relative yaw to the MLP branch.
+* **Filters:** All inputs are pre-filtered to remove noise prior to differential subtraction and integration to prevent noise propagation.
 
-#### 3. Lightweight Temporal Transformer (Self-Attention)
+#### 3. Lightweight Temporal Transformer (Self-Attention) (see [slef_attention_temporal_transformer.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/slef_attention_temporal_transformer.md))
 * **Structure:** Multi-head self-attention layers applied along the time dimension to capture long-range temporal dependencies.
 * **Pros:** State-of-the-art capability for sequence classification.
 * **Cons:** Extremely data-hungry; prone to severe overfitting on small datasets.
 * **Features:** Attention mechanisms lack sequential order by design, requiring us to add positional encodings to the time dimension. It prefers highly normalized and scaled input distributions.
-* **Filters:** **Low-pass smoothing is essential.** Self-attention dot-product computations are highly sensitive to noise outliers and transient spikes, which cause attention distribution weights to saturate on noise rather than gesture dynamics.
+* **Filters:** **Low-pass smoothing of magnitudes is mandatory.** Magnitude features ($a_{mag}$, $g_{mag}$) are lowpass-filtered (8.0 Hz Butterworth) directly upon calculation to prevent noise peaks from corrupting the self-attention projections.
+
 
 
 ### Validation Protocol
@@ -396,53 +392,6 @@ This decoupling allows us to iterate on feature engineering (e.g. adding relativ
 The winning model will be selected based on a joint utility score:
 $$\text{Utility} = \text{F1-Score} - w_1 \cdot \text{Inference Latency (ms)} - w_2 \cdot \text{Parameter Count}$$
 This ensures we do not overengineer a heavy model that performs well offline but introduces unacceptable lag in our real-time PowerPoint control loops.
-
-
-
----
-
-
-
-## CNN Model Architecture Design: Late Fusion Multi-Branch CNN
-
-Since we are fusing two distinct physical nodes (Wrist vs. Finger) and handcrafted statistical features, a **Late Fusion Multi-Branch Conv1D CNN** is the optimal setup:
-
-```mermaid
-graph TD
-    Input["Input Window (150, Channels)"] --> W_Split["Wrist Channels"]
-    Input --> F_Split["Finger Channels"]
-    Input --> S_Split["Statistical / Handcrafted Features"]
-
-    W_Split --> Branch1["Wrist Conv1D Branch<br/>- Conv1D (kernel=5, filters=32)<br/>- BatchNorm & ReLU<br/>- MaxPool1D<br/>- Conv1D (kernel=3, filters=64)<br/>- GlobalAveragePooling1D"]
-    
-    F_Split --> Branch2["Finger Conv1D Branch<br/>- Conv1D (kernel=5, filters=32)<br/>- BatchNorm & ReLU<br/>- MaxPool1D<br/>- Conv1D (kernel=3, filters=64)<br/>- GlobalAveragePooling1D"]
-
-    S_Split --> Branch3["Dense Feature MLP<br/>- Dense (32, ReLU)<br/>- Dropout (0.2)"]
-
-    Branch1 --> Concatenate["Concatenate Layer"]
-    Branch2 --> Concatenate
-    Branch3 --> Concatenate
-
-    Concatenate --> Classifier["FC Dense (64, ReLU)"]
-    Classifier --> Dropout["Dropout (0.3)"]
-    Dropout --> Softmax["Softmax Layer (8 Classes)"]
-```
-
-
-### Key Architectural Choices:
-
-1. **Parallel Temporal Branches (Late Fusion):**
-   * Keeping the Wrist and Finger networks separate allows each branch to build local spatial features independently before merging. Arm gestures are dominated by wrist dynamics, whereas hand gestures are dominated by finger-to-wrist deltas.
-2. **Conv1D for Temporal Learning:**
-   * 1D convolutions extract shift-invariant local features along the timeline. This helps handle slight temporal misalignments during real-time sliding window inference.
-3. **Global Average Pooling (GAP) vs. Flattening:**
-   * Replacing flat outputs with `GlobalAveragePooling1D` reduces the parameter footprint drastically, preventing overfitting on small training sets.
-4. **Regularization:**
-   * Batch Normalization is applied after each Conv1D layer to stabilize training.
-   * Dropout ($30\%$) is added before the final classifier to ensure generalization.
-5. **Loss & Optimization:**
-   * **Loss:** `categorical_crossentropy` (with one-hot label encoding).
-   * **Optimizer:** `Adam(learning_rate=0.001)` paired with a learning rate decay schedule (`ReduceLROnPlateau`).
 
 
 

@@ -48,3 +48,27 @@ In this setup, all raw and calculated features are stacked immediately into a si
 
 ### D. Regularization
 * **Justification:** Batch Normalization stabilizes training when dealing with varying amplitude ranges between different IMU devices. Adding `30% Dropout` before classification forces the classifier to generalize over session variations.
+
+### E. Input Feature Configuration (Post-Audit Synthesis)
+* **Justification:** Dataset auditing ([data_quality_audit_results.json](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/data_analysis/data_quality_audit_results.json)) demonstrated that raw coordinate channels suffer from session-to-session baseline drift, dropping linear generalization to 49%. Consequently, the single-branch input window is bound to an **optimized set of 18 channels** including **lowpass-filtered magnitudes (8.0 Hz)**, **highpass-filtered relative yaw (0.5 Hz prior to integration)**, and **filtered linear jerk derivatives** rather than raw signals, ensuring the CNN's temporal kernels learn features decoupled from hardware bias.
+
+---
+
+## 4. Experiment Directory & Saving Structure
+
+Every training session for this model must be saved in accordance with the project's experiment directory structure defined in the `README.md`:
+
+```
+models/
+└── early_fusion_single_branch_1d_cnn/               # Model identifier folder
+    └── training_session_<index>_<timestamp>/        # Sequential session (e.g., training_session_0_20260629_020000)
+        ├── model.keras                              # Saved trained Keras model weights and architecture
+        ├── model_metadata.json                      # JSON file containing training run audit properties
+        ├── confusion_matrix.png                     # Validation split confusion matrix plot
+        └── learning_curves.png                      # Training/validation loss and accuracy curves
+```
+
+* **Sequential Indexing**: The training script must dynamically query existing directories under `models/early_fusion_single_branch_1d_cnn/` to determine the next available sequential integer `<index>` (starting at `0` for the first run).
+* **Metadata Logging**: The `model_metadata.json` file must capture system info, hyperparameters, training dataset stats, and per-class precision, recall, and F1-score evaluation metrics.
+
+

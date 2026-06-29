@@ -48,3 +48,27 @@ graph TD
 
 ### D. Low-Pass Pre-filtering Dependency
 * **Justification:** Attention mechanisms are highly sensitive to noise outliers because the dot-product exponentials in the softmax calculation scale exponentially with magnitudes. A single noise spike can dominate the entire attention matrix. Thus, **low-pass filtering accelerometer (8.0 Hz) and gyroscope (12.0 Hz) inputs is critical** for Transformer convergence.
+
+### E. Signal Envelope Smoothing (Post-Audit Synthesis)
+* **Justification:** Magnitudes ($a_{mag}$, $g_{mag}$) are calculated by squaring and rectifying, which amplifies noise peaks. To prevent these peaks from corrupting the self-attention projections, the magnitude features must be lowpass-filtered (8.0 Hz Butterworth) directly upon calculation, as verified in [feature_filter_analysis_results.json](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/data_analysis/feature_filter_analysis_results.json). This delivers a smooth, clean motion envelope for the transformer attention layers.
+
+---
+
+## 4. Experiment Directory & Saving Structure
+
+Every training session for this model must be saved in accordance with the project's experiment directory structure defined in the `README.md`:
+
+```
+models/
+└── slef_attention_temporal_transformer/             # Model identifier folder (respecting typo in path)
+    └── training_session_<index>_<timestamp>/        # Sequential session (e.g., training_session_0_20260629_020000)
+        ├── model.keras                              # Saved trained Keras model weights and architecture
+        ├── model_metadata.json                      # JSON file containing training run audit properties
+        ├── confusion_matrix.png                     # Validation split confusion matrix plot
+        └── learning_curves.png                      # Training/validation loss and accuracy curves
+```
+
+* **Sequential Indexing**: The training script must dynamically query existing directories under `models/slef_attention_temporal_transformer/` to determine the next available sequential integer `<index>` (starting at `0` for the first run).
+* **Metadata Logging**: The `model_metadata.json` file must capture system info, hyperparameters, training dataset stats, and per-class precision, recall, and F1-score evaluation metrics.
+
+
