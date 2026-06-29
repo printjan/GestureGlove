@@ -17,5 +17,12 @@ dependencies = [
     "tqdm"
 ]
 
+[project.optional-dependencies]
+# PowerPoint control interface: sends real keyboard shortcuts to the active window.
+# Install with:  pip install -e .[control]
+control = [
+    "pyautogui"
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
