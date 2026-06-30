@@ -46,6 +46,13 @@ from data_fusion_project.processing.config import FilterType, OrientationMethod
 from data_fusion_project.training.late_fusion_multi_branch_cnn_test.model import build_multi_branch_cnn
 # Keep TimeSeriesScaler class loaded for joblib deserialization
 from data_fusion_project.training.late_fusion_multi_branch_cnn_test.train import TimeSeriesScaler
+from data_fusion_project.control import (
+    PowerPointController,
+    GestureDispatcher,
+    ControlConfig,
+    DryRunBackend,
+    PyAutoGuiBackend,
+)
 
 
 def parse_args():
@@ -62,7 +69,65 @@ def parse_args():
         default=0.80,
         help="Confidence threshold to trigger a gesture (0.0 to 1.0)."
     )
+    parser.add_argument(
+        "--cooldown",
+        type=float,
+        default=1.0,
+        help="Minimum seconds between two fired actions (de-bounce cool-down)."
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to a powerpoint_control.yml config file (defaults to config/powerpoint_control.yml)."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Do not send real key presses; only log the shortcuts that would be sent."
+    )
+    parser.add_argument(
+        "--no-control",
+        action="store_true",
+        help="Disable the PowerPoint control interface (predictions are only displayed)."
+    )
     return parser.parse_args()
+
+
+def build_dispatcher(args):
+    """
+    Build the gesture dispatcher wired to a PowerPoint controller.
+
+    Returns (dispatcher, live) where ``live`` is True when a real key-sending backend is
+    active. Returns (None, False) when control is disabled via ``--no-control``.
+    """
+    if args.no_control:
+        return None, False
+
+    config_path = Path(args.config) if args.config else None
+    config = ControlConfig.load(config_path)
+
+    if args.dry_run:
+        backend = DryRunBackend()
+        live = False
+    else:
+        try:
+            backend = PyAutoGuiBackend(pause_s=config.send_pause_s)
+            live = True
+        except ImportError:
+            ui.warning("pyautogui is not installed - falling back to DRY-RUN (no keys will be sent).")
+            ui.hint("Install it with:  pip install -e .[control]    (or:  pip install pyautogui)")
+            backend = DryRunBackend()
+            live = False
+
+    controller = PowerPointController(config=config, backend=backend)
+    dispatcher = GestureDispatcher(
+        controller,
+        confidence_threshold=args.threshold,
+        cooldown_s=args.cooldown,
+        require_release=True,
+    )
+    return dispatcher, live
 
 
 def load_pipeline_config(metadata: dict) -> PipelineConfig:
@@ -212,14 +277,14 @@ def main():
     ui.info("Building model and loading saved weights...")
     wrist_shape = (config.window_size, len(metadata["wrist_channels"]))
     finger_shape = (config.window_size, len(metadata["finger_channels"]))
-    
+
     model = build_multi_branch_cnn(
         input_shape_wrist=wrist_shape,
         input_shape_finger=finger_shape,
         num_classes=len(classes),
         input_shape_feat=None
     )
-    
+
     weights_path = model_dir / "model.weights.h5"
     model.load_weights(weights_path)
     ui.success("Weights loaded successfully.")
@@ -227,10 +292,19 @@ def main():
     # 3. Load Scalers
     scaler_wrist_path = model_dir / "scaler_x_wrist.joblib"
     scaler_finger_path = model_dir / "scaler_x_finger.joblib"
-    
+
     scaler_wrist = joblib.load(scaler_wrist_path)
     scaler_finger = joblib.load(scaler_finger_path)
     ui.success("Scalers deserialized.")
+
+    # 3b. Build the gesture -> PowerPoint control dispatcher
+    dispatcher, control_live = build_dispatcher(args)
+    if dispatcher is None:
+        ui.info("PowerPoint control disabled (--no-control); predictions are only displayed.")
+    elif control_live:
+        ui.success("PowerPoint control active (LIVE - real key presses will be sent).")
+    else:
+        ui.warning("PowerPoint control active (DRY-RUN - shortcuts are only logged, no keys sent).")
 
     # 4. Resolve Device Ports & Initialize
     device_resolution.print_available_serial_ports()
@@ -262,7 +336,10 @@ def main():
         set_log_level("WARNING")
         
         ui.hr(title="Live Inference Active")
-        ui.info("Perform gestures to see real-time classifications. Press Ctrl+C to exit.\n")
+        if dispatcher is not None:
+            ui.info("Perform gestures to control PowerPoint in real time. Press Ctrl+C to exit.\n")
+        else:
+            ui.info("Perform gestures to see real-time classifications. Press Ctrl+C to exit.\n")
         
         # 6. Sliding Window Inference Loop
         local_buf1 = []
@@ -309,18 +386,18 @@ def main():
                 
                 # Preprocess features (Filter + Complementary roll/pitch orientation)
                 channels, channel_names, _, _ = process_window(window_df, profile, config)
-                
+
                 # Slice and reshape inputs
                 wrist_idx = [channel_names.index(ch) for ch in metadata["wrist_channels"]]
                 finger_idx = [channel_names.index(ch) for ch in metadata["finger_channels"]]
-                
+
                 X_wrist = channels[:, wrist_idx][np.newaxis, :, :]
                 X_finger = channels[:, finger_idx][np.newaxis, :, :]
-                
+
                 # Apply time-series scaling
                 X_wrist_scaled = scaler_wrist.transform(X_wrist)
                 X_finger_scaled = scaler_finger.transform(X_finger)
-                
+
                 # Predict
                 preds = model.predict(
                     {"wrist_input": X_wrist_scaled, "finger_input": X_finger_scaled},
@@ -333,7 +410,15 @@ def main():
                 
                 # Display output
                 print_prediction(class_name, prob, args.threshold)
-                
+
+                # Feed the prediction to the control dispatcher (de-bounced).
+                # A fired action is printed on its own line so the live bar is not clobbered.
+                if dispatcher is not None:
+                    fired_action = dispatcher.feed(class_name, prob)
+                    if fired_action is not None:
+                        sys.stdout.write(f"\n\033[96m\033[1m  --> Action triggered: {fired_action}\033[0m\n")
+                        sys.stdout.flush()
+
             # Slide window forward
             next_start_us += advance_us
             _trim_before(local_buf1, next_start_us)
