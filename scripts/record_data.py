@@ -461,9 +461,11 @@ def input_thread(imu1, imu2, session_name):
     ui.banner("Recording Controller", subtitle=f"Session: {session_name}")
     _print_dataset_counts()
 
-    choices = list(GESTURES) + ["[Exit]"]
-
     while running.is_set():
+        # Rebuild the choices each time so the per-gesture sample counts stay current.
+        counts = _gesture_sample_counts()
+        choices = [f"{label}  ({counts[label]} samples)" for label in GESTURES] + ["[Exit]"]
+
         selection = ui.ask_choice("\nSelect gesture:", choices)
 
         if selection is None or selection == len(choices) - 1:
@@ -885,23 +887,33 @@ def _print_received_counts():
     logger.info("Data packets received in this session: IMU1 = %d, IMU2 = %d", n1, n2)
 
 
+def _gesture_sample_counts() -> dict[str, int]:
+    """
+    Counts the saved samples (#####.csv) per gesture across all sessions on disk.
+    :return: counts (dict[str, int]): mapping of gesture name to saved sample count.
+    """
+    counts = {}
+    for label in GESTURES:
+        gesture_dir = DATA_DIR / label
+        count = 0
+        if gesture_dir.is_dir():
+            for _ in gesture_dir.glob("**/[0-9][0-9][0-9][0-9][0-9].csv"):
+                count += 1
+        counts[label] = count
+    return counts
+
+
 def _print_dataset_counts():
     """
     Prints to UI the number of saved samples per gesture.
     :return: None:
     """
     ui.hr(title="Saved datasets per gesture")
-    total = 0
+    counts = _gesture_sample_counts()
     for label in GESTURES:
-        gesture_dir = DATA_DIR / label
-        count = 0
-        if gesture_dir.is_dir():
-            for p in gesture_dir.glob("**/[0-9][0-9][0-9][0-9][0-9].csv"):
-                count += 1
-        total += count
-        ui.kv([(label, str(count))])
+        ui.kv([(label, str(counts[label]))])
     ui.hr()
-    logger.info("Total number of valid datasets: %d", total)
+    logger.info("Total number of valid datasets: %d", sum(counts.values()))
 
 
 # ======================================================================================================================
