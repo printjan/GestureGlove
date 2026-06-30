@@ -85,6 +85,12 @@ For scalar features that summarize the entire window (e.g. cross-correlation coe
 ### E. Output Classification Layer (Explicit 8-Class Setup)
 * **Justification:** The output Dense classification layer utilizes a Softmax activation over 8 distinct classes (comprising the 7 active gestures and the `none`/idle class). Since continuous PowerPoint control runs continuously in sliding windows, the system is in an idle state 95% of the time. Training the network explicitly on `none` samples forces the convolutional filters to outline explicit decision boundaries in latent space separating noise and idle motion (like keyboard usage) from gesture profiles. A thresholded 7-class system, by contrast, suffers from out-of-distribution extrapolation, projecting random movements confidently into active gesture classes due to Softmax probability saturation. Explicitly modeling `none` is crucial to maintaining a zero false-positive rate.
 
+### F. Input Feature Configuration & Dynamic Selection (Post-Audit Synthesis)
+* **Justification:** Based on the feature filter analysis and data quality audit, we classify our features into three tiers:
+  * **Pruned (Dismissed):** We completely discard 6 derivative features (such as `IMU1_linear_jerkX/Z` and `IMU1/2_angular_accelerationY/Z`) because they satisfy `RF Gini < 0.002` and `Mutual Information < 0.5`, indicating they only introduce high-frequency noise without adding any discriminatory information.
+  * **Mandatory (Kept):** We permanently bind 11 high-yield features (including `IMU1_accX/Z`, `IMU2_accX/Y/Z`, `IMU2_gyrX`, `diff_accX/Z`, `IMU1_pitch`, and `IMU1_gyr_mag`) because they satisfy `Mutual Information > 0.9` and `RF Gini > 0.02`, carrying major motion shape information.
+  * **Dynamic Selection via Optuna:** The remaining 21 helper features are selected dynamically during training using a Bayesian Optuna search wrapper. The search wrapper evaluates different candidate feature combinations directly on the Late Fusion Multi-Branch Conv1D CNN architecture over multiple training trials, selecting the configuration that maximizes the Joint Utility Score. This lets the pipeline automatically optimize inputs specifically for the Multi-Branch model.
+
 ---
 
 ## 4. Experiment Directory & Saving Structure

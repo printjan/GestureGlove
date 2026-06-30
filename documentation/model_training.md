@@ -131,6 +131,74 @@ To avoid subjective overengineering, we can audit candidate features before sett
 3. **Ablation Studies:** During early training runs, systematically train the CNN with and without specific feature groups (e.g. Raw + Differentials vs. Raw + Differentials + Jerk) and check if validation accuracy changes significantly.
 
 
+### Empirical Audit Results & Feature Selection Decisions
+
+Based on the feature filter analysis and data quality audit results logged in `data_analysis/`, we have established a strict, data-driven feature selection strategy:
+
+#### 1. Rationale & Selection Criteria
+To maximize model performance and minimize inference latency, we classify all candidate features into three distinct categories based on their empirical scores:
+*   **Pruned (Dismissed) Features:** We dismiss all features that satisfy `RF Gini Importance < 0.002` **AND** `Mutual Information < 0.50`. These features hold no measurable discriminatory value, and training on them would only propagate noise and increase model complexity.
+*   **Mandatory (Kept) Features:** We keep all features that satisfy `Mutual Information > 0.90` **AND** `RF Gini Importance > 0.02`. These features pack high information density and are essential for separating primary movements.
+*   **Dynamic Features:** The remaining features represent potential helper channels. Because different neural network architectures have unique spatial-temporal representation capacities (e.g. multi-branch spatial routing vs. transformer attention smoothing), their selection is determined **dynamically during training** by an automated optimization algorithm.
+
+#### 2. Categorized Feature Lists
+
+##### A. Pruned (Dismissed) Features
+*   `IMU1_linear_jerkX` (RF = 0.00042, MI = 0.441)
+*   `IMU1_linear_jerkZ` (RF = 0.00034, MI = 0.308)
+*   `IMU2_linear_jerkZ` (RF = 0.00136, MI = 0.483)
+*   `IMU1_angular_accelerationY` (RF = 0.00018, MI = 0.440)
+*   `IMU1_angular_accelerationZ` (RF = 0.00049, MI = 0.407)
+*   `IMU2_angular_accelerationY` (RF = 0.00014, MI = 0.451)
+
+##### B. Mandatory (Kept) Features
+*   `IMU1_accX` (RF = 0.0344, MI = 1.177)
+*   `IMU1_accZ` (RF = 0.0368, MI = 1.106)
+*   `IMU1_gyrX` (RF = 0.0444, MI = 0.990)
+*   `IMU1_gyr_mag` (RF = 0.0298, MI = 1.051)
+*   `IMU1_pitch` (RF = 0.1001, MI = 1.247)
+*   `IMU2_accX` (RF = 0.0462, MI = 1.150)
+*   `IMU2_accY` (RF = 0.2000, MI = 0.964)
+*   `IMU2_accZ` (RF = 0.0631, MI = 1.211)
+*   `IMU2_gyrX` (RF = 0.0574, MI = 1.296)
+*   `diff_accX` (RF = 0.0233, MI = 0.989)
+*   `diff_accZ` (RF = 0.1535, MI = 1.088)
+
+##### C. Dynamic Features (Search Candidates)
+*   `IMU1_accY` (RF = 0.0054, MI = 0.848)
+*   `IMU1_gyrY` (RF = 0.0081, MI = 0.948)
+*   `IMU1_gyrZ` (RF = 0.0274, MI = 0.832)
+*   `IMU1_acc_mag` (RF = 0.0046, MI = 0.725)
+*   `IMU1_roll` (RF = 0.0042, MI = 0.469)
+*   `IMU1_relative_yaw` (RF = 0.0088, MI = 0.450)
+*   `IMU1_linear_jerkY` (RF = 0.0022, MI = 0.614)
+*   `IMU1_angular_accelerationX` (RF = 0.0065, MI = 0.317)
+*   `IMU2_gyrY` (RF = 0.0003, MI = 0.926)
+*   `IMU2_gyrZ` (RF = 0.0403, MI = 0.789)
+*   `IMU2_gyr_mag` (RF = 0.0093, MI = 0.967)
+*   `IMU2_acc_mag` (RF = 0.0028, MI = 0.717)
+*   `IMU2_relative_yaw` (RF = 0.0256, MI = 0.553)
+*   `IMU2_linear_jerkX` (RF = 0.0005, MI = 0.559)
+*   `IMU2_linear_jerkY` (RF = 0.0005, MI = 0.822)
+*   `IMU2_angular_accelerationX` (RF = 0.0063, MI = 0.331)
+*   `IMU2_angular_accelerationZ` (RF = 0.0017, MI = 0.578)
+*   `diff_accY` (RF = 0.0042, MI = 0.878)
+*   `diff_gyrX` (RF = 0.0282, MI = 0.617)
+*   `diff_gyrY` (RF = 0.0168, MI = 0.952)
+*   `diff_gyrZ` (RF = 0.0029, MI = 0.993)
+
+#### 3. Automated Feature Selection Strategy: Bayesian Wrapper Sweeps (Optuna)
+Since model training time is not a limiting constraint and model performance is our absolute priority, we select **Bayesian Hyperparameter Optimization (Optuna)** as our automated feature selection strategy.
+*   **Mechanism:** Each of the 21 dynamic features is mapped to a binary trial hyperparameter (`True` or `False`). During training, Optuna generates combinations using the Tree-structured Parzen Estimator (TPE) algorithm, compiles the shape-agnostic model, trains it using Leave-One-Session-Out (LOSO) cross-validation, and logs the validation Joint Utility Score.
+*   **Why it brings the best performance:** Different neural network designs have non-linear architectural preferences (e.g. multi-branch late fusion CNNs exploit decoupled spatial dynamics, while self-attention Transformers rely on smooth temporal transitions). Evaluating the candidate feature combinations directly on the target deep network architecture is the only way to capture these model-specific synergies, outperforming single-run soft-gating or greedy forward selection.
+
+#### 4. Shallow Model Baselines (Why Deep Learning is Required)
+*   **Empirical Evidence:** Leave-One-Session-Out (LOSO) cross-validation using shallow algorithms (KNN and SVM) on the raw signals yielded only **39.6% accuracy**. Looking at the confusion matrix, static postures like `fist` and vertical sweeps like `jerk_up` were completely misclassified as `none` due to baseline drifts and spatial-temporal shifts across recording sessions.
+*   **Justification:** Shallow models cannot model temporal shift-invariance or local temporal patterns. This mathematically warrants the use of Conv1D CNNs and self-attention Transformers to achieve high-accuracy real-time PowerPoint control.
+
+---
+
+
 
 ## Real-Time Pre-Computed Features & Filtering Requirements
 
@@ -406,6 +474,18 @@ We can structure our workflow in two ways: deciding on features and filters **be
   * **Rapid Prototyping:** Makes it trivial to run continuous grid search or ablation sweeps over different configurations.
 
 **Our Choice:** We are implementing **Option B (Dynamic Setup)**. Our `GestureDataset` container encapsulates column names and metadata, enabling us to safely postpone the final feature selection until we have systematically benchmarked all options.
+
+
+### Automated Feature Selection (AutoML & Gating)
+
+Because our pipeline is built around Option B (Dynamic Setup), we can expand it to automatically discover the optimal feature combinations during training using three automated strategies:
+
+1. **Hyperparameter Optimization Wrapper (Optuna/KerasTuner):**
+   * *Mechanism:* Treat feature inclusion flags (e.g. `include_jerk=True/False`) as binary hyperparameters. A search controller runs sequential trials using Bayesian optimization (TPE), invoking the dataset loader and model compiler dynamically for each trial, and selecting the combination that maximizes the Joint Utility Score.
+2. **Learnable Feature Gating (Soft Attention Layer):**
+   * *Mechanism:* Insert a learnable gating layer directly after the input: $\mathbf{X}_{gated} = \mathbf{X} \odot \sigma(\mathbf{w})$, where $\mathbf{w} \in \mathbb{R}^C$ is a vector of weights. By adding an $L_1$ regularization penalty ($\lambda \sum |w_j|$) to the loss function, the backpropagation optimizer is forced to drive weights of redundant features to zero, letting the network dynamically select its inputs in a single training run.
+3. **Iterative Forward/Backward Selection Wrapper:**
+   * *Mechanism:* A greedy wrapper script trains a baseline model, automatically appends one feature channel group at a time, and permanently registers it in the pipeline only if validation accuracy increases above a statistical threshold.
 
 
 
