@@ -26,6 +26,7 @@ Usage Example:
 # ======================================================================================================================
 from __future__ import annotations
 
+import sys
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -38,18 +39,22 @@ logger = get_logger(__name__)
 # constants
 # ======================================================================================================================
 # Recognized modifier tokens (canonical, lower-case) used in shortcut strings.
-MODIFIERS: frozenset[str] = frozenset({"ctrl", "alt", "shift", "win"})
+MODIFIERS: frozenset[str] = frozenset({"ctrl", "alt", "shift", "win", "command"})
+
+# Dynamic OS modifier targeting
+_win_modifier = "command" if sys.platform == "darwin" else "win"
 
 # Aliases mapping user-friendly tokens to the canonical token names understood by the
 # backends (and by pyautogui). Keys are always lower-case.
 _KEY_ALIASES: dict[str, str] = {
     # modifiers
     "control": "ctrl",
-    "cmd": "win",
-    "command": "win",
-    "super": "win",
-    "meta": "win",
-    "windows": "win",
+    "cmd": _win_modifier,
+    "command": _win_modifier,
+    "win": _win_modifier,
+    "super": _win_modifier,
+    "meta": _win_modifier,
+    "windows": _win_modifier,
     "option": "alt",
     "opt": "alt",
     # navigation / control keys
