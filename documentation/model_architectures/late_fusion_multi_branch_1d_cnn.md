@@ -82,6 +82,9 @@ For scalar features that summarize the entire window (e.g. cross-correlation coe
 ### D. Spatial-Kinematic Decoupling (Post-Audit Synthesis)
 * **Justification:** Random Forest Gini ranking in [feature_filter_analysis_results.json](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/data_analysis/feature_filter_analysis_results.json) revealed that inter-IMU difference features (`diff_accZ`, `diff_accY`) hold over **30%** of decision boundary splitting weight. This confirms that arm translation (wrist IMU1) and hand posture (finger relative to wrist) are kinematically decoupled. The late fusion multi-branch model is uniquely suited for this: Branch 1 is fed wrist-only dynamics (arm sweeps), Branch 2 processes finger-relative differences, and the MLP receives short-term relative yaw (highpass-filtered at 0.5 Hz prior to integration to prevent linear drift). This decodes arm vs. hand dynamics in parallel pathways prior to late fusion.
 
+### E. Output Classification Layer (Explicit 8-Class Setup)
+* **Justification:** The output Dense classification layer utilizes a Softmax activation over 8 distinct classes (comprising the 7 active gestures and the `none`/idle class). Since continuous PowerPoint control runs continuously in sliding windows, the system is in an idle state 95% of the time. Training the network explicitly on `none` samples forces the convolutional filters to outline explicit decision boundaries in latent space separating noise and idle motion (like keyboard usage) from gesture profiles. A thresholded 7-class system, by contrast, suffers from out-of-distribution extrapolation, projecting random movements confidently into active gesture classes due to Softmax probability saturation. Explicitly modeling `none` is crucial to maintaining a zero false-positive rate.
+
 ---
 
 ## 4. Experiment Directory & Saving Structure

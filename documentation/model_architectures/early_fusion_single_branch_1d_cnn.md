@@ -49,6 +49,9 @@ In this setup, all raw and calculated features are stacked immediately into a si
 ### D. Regularization
 * **Justification:** Batch Normalization stabilizes training when dealing with varying amplitude ranges between different IMU devices. Adding `30% Dropout` before classification forces the classifier to generalize over session variations.
 
+### F. Output Classification Layer (Explicit 8-Class Setup)
+* **Justification:** The final Dense Softmax layer outputs a probability distribution over 8 classes (the 7 active gestures plus the `none`/idle class). Since continuous real-time PowerPoint control requires a near-zero false-positive rate, we must explicitly model the features of non-gesture idle movements (like mouse usage or random arm shifts). A thresholded 7-class system lacks boundaries for noise, meaning random motion would confidently extrapolate to high-probability active gestures. Modelling `none` as an explicit class secures the decision boundaries of the active gestures.
+
 ### E. Input Feature Configuration (Post-Audit Synthesis)
 * **Justification:** Dataset auditing ([data_quality_audit_results.json](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/data_analysis/data_quality_audit_results.json)) demonstrated that raw coordinate channels suffer from session-to-session baseline drift, dropping linear generalization to 49%. Consequently, the single-branch input window is bound to an **optimized set of 18 channels** including **lowpass-filtered magnitudes (8.0 Hz)**, **highpass-filtered relative yaw (0.5 Hz prior to integration)**, and **filtered linear jerk derivatives** rather than raw signals, ensuring the CNN's temporal kernels learn features decoupled from hardware bias.
 

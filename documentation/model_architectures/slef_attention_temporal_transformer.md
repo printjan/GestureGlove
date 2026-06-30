@@ -52,6 +52,9 @@ graph TD
 ### E. Signal Envelope Smoothing (Post-Audit Synthesis)
 * **Justification:** Magnitudes ($a_{mag}$, $g_{mag}$) are calculated by squaring and rectifying, which amplifies noise peaks. To prevent these peaks from corrupting the self-attention projections, the magnitude features must be lowpass-filtered (8.0 Hz Butterworth) directly upon calculation, as verified in [feature_filter_analysis_results.json](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/data_analysis/feature_filter_analysis_results.json). This delivers a smooth, clean motion envelope for the transformer attention layers.
 
+### F. Output Classification Layer (Explicit 8-Class Setup)
+* **Justification:** The output Dense classification layer is structured with a Softmax activation function over 8 classes (representing the 7 active gestures and the `none`/idle class). For a real-time sliding window system, capturing the idle hand states is essential to prevent false activations. By training the network explicitly on `none` samples, we construct dedicated latent boundaries separating random movements from structural gesture dynamics. An implicit 7-class configuration thresholding mechanism is highly vulnerable to noise extrapolation, causing random spikes to confidently register as structured gestures due to Softmax saturation. Establishing an explicit class for `none` is the only way to ensure the system is silent during non-gesture activity.
+
 ---
 
 ## 4. Experiment Directory & Saving Structure

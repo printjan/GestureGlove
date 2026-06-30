@@ -387,12 +387,66 @@ Hardcoding the feature shapes or indices in model code is a major anti-pattern. 
 This decoupling allows us to iterate on feature engineering (e.g. adding relative yaw, lowpass filters, or jerk derivatives) and benchmark different architectures (Single-Branch, Multi-Branch, LSTM) completely independently without rewriting any model code.
 
 
+### Feature Selection Timing: Before vs. After Pipeline Development
+
+We can structure our workflow in two ways: deciding on features and filters **before** writing the training script, or doing so **after** the pipeline is built.
+
+#### Option A: Deciding Features & Filters Beforehand (Static Setup)
+* **Description:** Hardcode the target features, index coordinates, and filter configurations directly in the dataset loader, model input layers, and training loop.
+* **Implications:**
+  * **Rigidity & Churn:** If we decide to add relative yaw or remove jerk, we must rewrite the indices, the model input shapes, the training data loader, and coordinate checks.
+  * **High Risk of Silent Mismatches:** If dataset columns shift (e.g., column index 6 changes from pitch to raw accZ), hardcoded index slices like `X[:, :, 6]` will silently train on the wrong data, producing garbage predictions without throwing exceptions.
+  * **No Fast Feature Ablation:** Running feature ablation experiments (e.g. comparing model accuracy with vs. without differential features) requires creating and maintaining separate code branches.
+
+#### Option B: Deciding Features & Filters After Pipeline Development (Dynamic Setup)
+* **Description:** Build a configuration-driven training pipeline where model input sizes, index slices, and spatial routing are determined **dynamically at runtime** by inspecting the loaded dataset metadata.
+* **Implications:**
+  * **Config-Only Iteration:** We can change feature channels, filter cutoffs, and padding modes by simply modifying the CLI arguments or JSON configs (e.g., `python scripts/build_dataset.py --diff --jitter-range 10`). The model and training script adapt automatically with zero code changes.
+  * **Pristine Spatial Routing:** For multi-branch architectures, the training script parses the dataset column header labels (e.g., matching `"IMU1"` or `"IMU2"`) to dynamically build the indexing maps, guaranteeing that wrist and finger channels are routed correctly even if columns are reordered.
+  * **Rapid Prototyping:** Makes it trivial to run continuous grid search or ablation sweeps over different configurations.
+
+**Our Choice:** We are implementing **Option B (Dynamic Setup)**. Our `GestureDataset` container encapsulates column names and metadata, enabling us to safely postpone the final feature selection until we have systematically benchmarked all options.
+
+
+
 ### Benchmark Metrics
 
 The winning model will be selected based on a joint utility score:
 $$\text{Utility} = \text{F1-Score} - w_1 \cdot \text{Inference Latency (ms)} - w_2 \cdot \text{Parameter Count}$$
 This ensures we do not overengineer a heavy model that performs well offline but introduces unacceptable lag in our real-time PowerPoint control loops.
 
-
-
 ---
+
+
+## Output Class Strategy: Explicit 8-Class vs. 7-Class + Threshold
+
+In our real-time PowerPoint control system, sliding-window inference runs continuously. Since the user is idle 95% of the time, mapping non-gesture movements correctly to the `none` state is critical. We evaluated two architectures for output classification:
+
+### Option A: Explicit 8-Class Setup (Softmax = 8, Including `none`)
+The model is trained explicitly on both the 7 active gestures and recorded background idle movements (`none`). The final layer is an 8-way Softmax classifier.
+
+* **PROS:**
+  * **Explicit Decision Boundary for Background Noise:** Forces the network's convolutional filters to learn features that distinguish structured gesture trajectories from unstructured activities (e.g. typing, resting, hand scratching).
+  * **Low False-Positive Trigger Rate:** Background activities map directly to the `none` class with high probability, minimizing accidental active gesture triggers.
+  * **Aligned with HAR Literature:** Established wearable Human Activity Recognition (HAR) models (e.g. *Ordóñez & Roggen, 2016*) explicitly model the "null/idle" class to prevent false positives.
+* **CONS:**
+  * **Class Diversity Demands:** The variety of background movements is infinite. A poorly representative training set for the `none` class can lead to leakage into other active gesture categories.
+
+### Option B: Implicit 7-Class Setup + Confidence Thresholding
+The model is trained only on the 7 active gestures. During real-time inference, if the maximum probability among the 7 Softmax outputs falls below a threshold $\tau$ (e.g. $\tau = 0.75$), the system classifies the window as `none`.
+
+* **PROS:**
+  * **Simpler Classifier Structure:** Eliminates the need to model the infinite variance of background noise, reducing the output dense layer by one unit.
+* **CONS:**
+  * **No Latent Space Boundaries for Noise:** Because the model never sees "idle" data during training, the network's decision boundaries for the active gestures are unbounded. 
+  * **Confident Extrapolation on Noise (OOD):** Deep neural networks tend to make highly confident predictions on Out-of-Distribution (OOD) data. Pure sensor noise or random arm movements can easily project into high-confidence regions ($> \tau$) of a gesture (e.g., $95\%$ probability for `circle_cw` on a hand scratch), leading to catastrophic false-trigger rates.
+  * **Softmax Sum-to-One Saturation:** The Softmax function forces outputs to sum to 1.0. Even under static rest (pure background noise), the model *must* distribute $100\%$ probability across the 7 active gestures. Any minor skew will push one class above the threshold.
+
+| Evaluation Metric | Option A: Explicit 8-Class Setup | Option B: 7-Class + Thresholding |
+|---|---|---|
+| **Real-time False-Positive Rate** | **Extremely Low** (Explicitly trained decision boundaries) | **High** (Confident extrapolation on noise) |
+| **Tuning Sensitivity** | **None** (Dynamic probability argmax) | **Very High** (Requires tuning hyperparameter $\tau$) |
+| **System Compatibility** | **High** (Enforces single-class-only prediction) | **Medium** (Vulnerable to threshold boundary leakage) |
+
+### Final Engineering Decision
+We will **maintain the Explicit 8-Class Setup (Option A)**. Since our system is designed to predict exactly one class at a time (no multiple overlapping gestures), establishing an explicit `none` class in the Softmax layer is the only mathematically sound way to guarantee a robust, noise-tolerant real-time classifier.
