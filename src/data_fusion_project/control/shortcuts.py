@@ -54,7 +54,6 @@ _KEY_ALIASES: dict[str, str] = {
     "opt": "alt",
     # navigation / control keys
     "escape": "esc",
-    "return": "enter",
     "del": "delete",
     "ins": "insert",
     "pgup": "pageup",

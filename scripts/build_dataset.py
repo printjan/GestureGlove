@@ -60,10 +60,18 @@ def build_config(args) -> PipelineConfig:
             imus=tuple(args.orientation_imus),
         ),
         features=FeatureConfig(
-            include_diff_acc=args.diff,
-            include_diff_gyro=args.diff,
+            include_diff_acc=args.diff or args.relative_acceleration,
+            include_diff_gyro=args.diff or args.relative_rotation,
             cross_correlation=args.cross_correlation,
             statistics=args.statistics,
+            include_linear_jerk=args.linear_jerk,
+            include_angular_acceleration=args.angular_acceleration,
+            include_relative_acceleration=args.relative_acceleration,
+            include_relative_rotation=args.relative_rotation,
+            include_relative_yaw=args.relative_yaw,
+            include_accelerometer_magnitude=args.acc_magnitude,
+            include_gyroscope_magnitude=args.gyro_magnitude,
+            include_gravity_free_linear_acceleration=args.gravity_free_acc,
         ),
     )
 
@@ -92,6 +100,16 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--diff", action="store_true", help="Add inter-IMU (finger-wrist) difference channels.")
     p.add_argument("--cross-correlation", action="store_true", help="Add cross-correlation scalar features.")
     p.add_argument("--statistics", action="store_true", help="Add per-channel statistic scalar features.")
+    
+    # Pre-computed features
+    p.add_argument("--linear-jerk", action="store_true", help="Include low-pass filtered linear jerk.")
+    p.add_argument("--angular-acceleration", action="store_true", help="Include angular acceleration.")
+    p.add_argument("--relative-acceleration", action="store_true", help="Include relative acceleration (finger - wrist).")
+    p.add_argument("--relative-rotation", action="store_true", help="Include relative rotation (finger - wrist).")
+    p.add_argument("--relative-yaw", action="store_true", help="Include high-pass filtered short-term relative yaw integration.")
+    p.add_argument("--acc-magnitude", action="store_true", help="Include low-pass filtered accelerometer magnitude.")
+    p.add_argument("--gyro-magnitude", action="store_true", help="Include low-pass filtered gyroscope magnitude.")
+    p.add_argument("--gravity-free-acc", action="store_true", help="Include gravity-free linear acceleration projected by complementary pitch/roll.")
     return p.parse_args(argv)
 
 

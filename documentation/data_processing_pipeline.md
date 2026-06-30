@@ -211,3 +211,32 @@ PipelineConfig(
     filters=FilterConfig(gyro_filter=FilterType.BANDPASS, gyro_cutoff_hz=(0.5, 20.0)),
 )
 ```
+
+---
+
+## 8. Dataset Loading, Split Protocols, and Leakage Prevention
+
+To ensure robust evaluation and prevent training anomalies, the dataset loading and split routines implement several verification and normalization policies:
+
+### Session Normalization (Leakage Prevention)
+During data collection, recalibrations within a single continuous recording session create separate directories with `_p[0-9]+` suffixes (e.g., `session_1782679027_p2` and `session_1782679027_p3`). 
+* **Normalized Grouping**: The dataset loader (`load_dataset()`) normalizes these session names by stripping the `_p` suffix before assigning them to the `groups` array.
+* **Leakage Avoidance**: This grouping guarantees that all segments recorded under the exact same physical sensor mounting are kept together. When doing a `leave-session-out` split, this prevents identical mountings from appearing in both train and test sets, avoiding highly inflated validation scores (sensor mounting leak).
+
+### Split Feasibility Verification
+When training a model with the `leave-session-out` partition strategy, the training routine automatically validates that all gesture classes are present in multiple physical sessions.
+* **Fallback Behavior**: If any class has only 1 unique physical session recorded on disk, a disjoint split would result in empty classes in the training set and `0.00%` accuracy. The pipeline will print a warning and fall back to a `chronological` split (splitting *within* each class's samples chronologically).
+* **Recommendations**: For honest generalization metrics, record at least 2 to 3 separate sessions (with distinct sensor placements/mountings) for each gesture class.
+
+### Exposing Precomputed Features in CLIs
+The command-line interfaces for both `scripts/train_test_cnn.py` and `scripts/build_dataset.py` support the following flags to directly toggle the advanced precomputed features:
+* `--linear-jerk`: Include low-pass filtered linear jerk.
+* `--angular-acceleration`: Include angular acceleration.
+* `--relative-acceleration`: Include relative acceleration (`IMU2 - IMU1` acc).
+* `--relative-rotation`: Include relative rotation (`IMU2 - IMU1` gyro).
+* `--relative-yaw`: Include high-pass filtered short-term integrated relative yaw.
+* `--acc-magnitude`: Include low-pass filtered accelerometer magnitude.
+* `--gyro-magnitude`: Include low-pass filtered gyroscope magnitude.
+* `--gravity-free-acc`: Include gravity-free linear acceleration projected by roll/pitch.
+
+Live inference pipelines (`run_realtime_inference_test.py`) read these configurations dynamically from the model's `model_metadata.json` and adjust online feature extraction automatically.

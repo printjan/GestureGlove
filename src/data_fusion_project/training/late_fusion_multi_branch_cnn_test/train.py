@@ -33,6 +33,97 @@ from data_fusion_project.core.paths import (
 
 logger = get_logger(__name__)
 
+ALL_37_FEATURES = [
+    "IMU1_linear_jerkX",
+    "IMU1_linear_jerkZ",
+    "IMU2_linear_jerkZ",
+    "IMU1_angular_accelerationY",
+    "IMU1_angular_accelerationZ",
+    "IMU2_angular_accelerationY",
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag",
+    "IMU1_accY",
+    "IMU1_gyrY",
+    "IMU1_gyrZ",
+    "IMU1_acc_mag",
+    "IMU1_roll",
+    "IMU1_relative_yaw",
+    "IMU1_linear_jerkY",
+    "IMU1_angular_accelerationX",
+    "IMU2_gyrY",
+    "IMU2_gyrZ",
+    "IMU2_gyr_mag",
+    "IMU2_acc_mag",
+    "IMU2_relative_yaw",
+    "IMU2_linear_jerkX",
+    "IMU2_linear_jerkY",
+    "IMU2_angular_accelerationX",
+    "IMU2_angular_accelerationZ",
+    "diff_accY",
+    "diff_gyrX",
+    "diff_gyrY",
+    "diff_gyrZ",
+]
+
+
+def matches_feature(feature_name: str, channel_name: str) -> bool:
+    norm_feat = feature_name.lower().replace("_", "")
+    norm_chan = channel_name.lower().replace("_", "")
+    if norm_feat == norm_chan:
+        return True
+    
+    replacements = {
+        "gyrmag": "gyroscopemagnitude",
+        "accmag": "accelerometermagnitude",
+        "diffacc": "relativeacceleration",
+        "diffgyr": "relativerotation",
+    }
+    for k, v in replacements.items():
+        if norm_feat.replace(k, v) == norm_chan or norm_chan.replace(k, v) == norm_feat:
+            return True
+            
+    return False
+
+
+def slice_dataset_channels(ds: GestureDataset, feature_toggles: dict[str, bool]) -> GestureDataset:
+    active_features = [feat for feat, val in feature_toggles.items() if val]
+    selected_indices = []
+    new_channel_names = []
+    
+    for feat in active_features:
+        found = False
+        for idx, chan in enumerate(ds.channel_names):
+            if matches_feature(feat, chan):
+                selected_indices.append(idx)
+                new_channel_names.append(chan)
+                found = True
+                break
+        if not found:
+            pass
+            
+    sliced_X = ds.X[:, :, selected_indices]
+    
+    return GestureDataset(
+        X=sliced_X,
+        y=ds.y,
+        groups=ds.groups,
+        class_names=ds.class_names,
+        channel_names=new_channel_names,
+        features=None,
+        feature_names=[],
+        sample_paths=ds.sample_paths,
+        config=ds.config
+    )
+
 
 # ======================================================================================================================
 # Data Augmentation Helpers
@@ -234,7 +325,8 @@ def train_model(
     model_name: str = "late_fusion_cnn_test",
     timestamp: str | None = None,
     seed: int = 42,
-    augment_rotation: float = 0.0
+    augment_rotation: float = 0.0,
+    feature_toggles: dict[str, bool] | None = None
 ) -> tuple[keras.Model, dict, dict]:
     """
     Executes the training and evaluation loop.
@@ -248,6 +340,13 @@ def train_model(
     :param: seed (int): random seed for split reproducibility.
     :return: result (tuple): (trained_model, history_dict, evaluation_metrics).
     """
+    if feature_toggles is not None:
+        ds = slice_dataset_channels(ds, feature_toggles)
+        logger.info("Sliced dataset dynamically based on feature toggles. Shape: %s", ds.X.shape)
+    else:
+        # Dynamic check of which of the 37 features are in the loaded dataset
+        feature_toggles = {feat: any(matches_feature(feat, chan) for chan in ds.channel_names) for feat in ALL_37_FEATURES}
+
     n_classes = ds.n_classes
     logger.info("Beginning training pipeline with split_type=%s, target epochs=%d, batch_size=%d", 
                 split_type, epochs, batch_size)
@@ -258,7 +357,7 @@ def train_model(
     X_finger = ds.X[:, :, finger_idx] if finger_idx else None
     
     # 2. Train/Test indices split
-    if split_type == "leave_session_out":
+    if split_type in ("leave_session_out", "leave-session-out"):
         train_idx, test_idx = leave_sessions_out(ds.groups, test_fraction=test_fraction, seed=seed)
     elif split_type == "chronological":
         train_idx, test_idx = chronological_split(ds.y, test_fraction=test_fraction)
@@ -433,6 +532,7 @@ def train_model(
             "wrist_channels": [ds.channel_names[i] for i in wrist_idx] if wrist_idx else [],
             "finger_channels": [ds.channel_names[i] for i in finger_idx] if finger_idx else [],
             "feature_names": ds.feature_names,
+            "feature_toggles": feature_toggles,
             "machine_info": {
                 "hostname": platform.node(),
                 "os": f"{platform.system()}-{platform.release()}",
@@ -453,8 +553,8 @@ def train_model(
             },
             "split_info": {
                 "strategy": split_type,
-                "validation_session": None,
-                "train_sessions": [str(s) for s in sessions_used]
+                "train_sessions": sorted(list(set(ds.groups[train_idx].tolist()))),
+                "test_sessions": sorted(list(set(ds.groups[test_idx].tolist())))
             },
             "performance": {
                 "best_epoch": best_epoch + 1,

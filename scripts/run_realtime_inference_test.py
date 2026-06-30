@@ -91,6 +91,17 @@ def parse_args():
         action="store_true",
         help="Disable the PowerPoint control interface (predictions are only displayed)."
     )
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Simulate IMU data streaming instead of connecting to real serial hardware."
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Automated exit timeout in seconds (useful for headless verification)."
+    )
     return parser.parse_args()
 
 
@@ -168,15 +179,18 @@ def record_calibration(imu1: IMUDataInput, imu2: IMUDataInput, config: Calibrati
     """
     Records 5 seconds of stillness and aligns the streams to generate a calibration dataset.
     """
-    ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
-    ui.info("Please hold the sensors absolutely still...")
+    if sys.stdin.isatty():
+        ui.wait_for_enter("Ready? Press [Enter] to start 5s static calibration...")
+        ui.info("Please hold the sensors absolutely still...")
+    else:
+        ui.info("Non-interactive run: Starting 5s static calibration...")
     
     # Drain queues to start fresh
     imu1.get_data()
     imu2.get_data()
     
     # Simple countdown using progress bar
-    ui.progress_bar(5.0, label="Calibrating: ", color=Style.SUCCESS)
+    ui.progress_bar(6.0, label="Calibrating: ", color=Style.SUCCESS)
     
     snapshot1 = imu1.get_data()
     snapshot2 = imu2.get_data()
@@ -245,10 +259,16 @@ def main():
         ui.error(f"Model directory not found: {model_dir}")
         sys.exit(1)
 
-    # If this is the base directory containing sequential session runs, find the latest session run
+    def get_session_num(p):
+        parts = p.name.split("_")
+        try:
+            return int(parts[2])
+        except (IndexError, ValueError):
+            return 0
+
     sessions = sorted(
         [p for p in model_dir.glob("training_session_*") if p.is_dir()],
-        key=lambda p: p.name
+        key=get_session_num
     )
     if sessions:
         model_dir = sessions[-1]
@@ -307,23 +327,78 @@ def main():
         ui.warning("PowerPoint control active (DRY-RUN - shortcuts are only logged, no keys sent).")
 
     # 4. Resolve Device Ports & Initialize
-    device_resolution.print_available_serial_ports()
-    port_imu1 = device_resolution.resolve_device_port("imu1")
-    port_imu2 = device_resolution.resolve_device_port("imu2")
+    if args.simulate:
+        class MockIMU:
+            _start_time_us = int(time.time() * 100) * 10000
 
-    imu1 = IMUDataInput(port=port_imu1, name="IMU1")
-    imu2 = IMUDataInput(port=port_imu2, name="IMU2")
+            def __init__(self, name):
+                self.name = name
+                self.running = False
+                self._thread = None
+                self._data = []
+                self.lock = threading.Lock()
+                self.is_mock = True
+                
+            def start(self):
+                self.running = True
+                self._thread = threading.Thread(target=self._run, daemon=True)
+                self._thread.start()
+                
+            def stop(self):
+                self.running = False
+                
+            def get_data(self):
+                with self.lock:
+                    data = list(self._data)
+                    self._data.clear()
+                    return data
+                    
+            def _run(self):
+                last_t = 0
+                while self.running:
+                    time.sleep(0.01) # 100 Hz
+                    t_now_us = int(time.time() * 100) * 10000
+                    if t_now_us <= last_t:
+                        t_now_us = last_t + 10000
+                    last_t = t_now_us
+                    
+                    packet = {
+                        'pc_timestamp_us': t_now_us,
+                        'esp_timestamp_us': t_now_us,
+                        'imu_timestamp_ms': int(t_now_us / 1000),
+                        'accX': np.random.uniform(-0.02, 0.02),
+                        'accY': np.random.uniform(-0.02, 0.02),
+                        'accZ': np.random.uniform(0.98, 1.02),
+                        'gyrX': np.random.uniform(-0.01, 0.01),
+                        'gyrY': np.random.uniform(-0.01, 0.01),
+                        'gyrZ': np.random.uniform(-0.01, 0.01),
+                    }
+                    with self.lock:
+                        self._data.append(packet)
 
-    ui.info("Connecting to sensors...")
-    imu1.start()
-    imu2.start()
-    time.sleep(2.0)
-    
-    if not imu1.running or not imu2.running:
-        ui.error("Unable to connect to one or both sensors. Aborting.")
-        imu1.stop()
-        imu2.stop()
-        sys.exit(1)
+        ui.info("Initializing simulated IMU sensor data streams...")
+        imu1 = MockIMU("IMU1")
+        imu2 = MockIMU("IMU2")
+        imu1.start()
+        imu2.start()
+    else:
+        device_resolution.print_available_serial_ports()
+        port_imu1 = device_resolution.resolve_device_port("imu1")
+        port_imu2 = device_resolution.resolve_device_port("imu2")
+
+        imu1 = IMUDataInput(port=port_imu1, name="IMU1")
+        imu2 = IMUDataInput(port=port_imu2, name="IMU2")
+
+        ui.info("Connecting to sensors...")
+        imu1.start()
+        imu2.start()
+        time.sleep(2.0)
+        
+        if not imu1.running or not imu2.running:
+            ui.error("Unable to connect to one or both sensors. Aborting.")
+            imu1.stop()
+            imu2.stop()
+            sys.exit(1)
 
     try:
         # 5. Run Initial Calibration
@@ -353,7 +428,12 @@ def main():
         imu1.get_data()
         imu2.get_data()
         
+        start_time_loop = time.time()
         while True:
+            if args.timeout is not None and (time.time() - start_time_loop) > args.timeout:
+                ui.info(f"\nSimulated run timeout of {args.timeout}s reached. Exiting cleanly.")
+                break
+                
             if not imu1.running or not imu2.running:
                 ui.error("\nConnection lost to sensor.")
                 break

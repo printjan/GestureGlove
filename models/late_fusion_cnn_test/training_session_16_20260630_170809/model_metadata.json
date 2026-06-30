@@ -1,8 +1,8 @@
 {
-  "timestamp": "20260629_031807",
+  "timestamp": "20260630_170809",
   "model_name": "late_fusion_cnn_test",
-  "training_duration_s": 0.5899322032928467,
-  "epochs_trained": 1,
+  "training_duration_s": 5.7453789710998535,
+  "epochs_trained": 15,
   "classes": [
     "none",
     "swipe_left",
@@ -15,48 +15,108 @@
   ],
   "channels": [
     "IMU1_accX",
-    "IMU1_accY",
     "IMU1_accZ",
     "IMU1_gyrX",
-    "IMU1_gyrY",
-    "IMU1_gyrZ",
+    "IMU1_pitch",
     "IMU2_accX",
     "IMU2_accY",
     "IMU2_accZ",
     "IMU2_gyrX",
-    "IMU2_gyrY",
-    "IMU2_gyrZ",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag",
+    "IMU1_accY",
+    "IMU1_gyrY",
+    "IMU1_acc_mag",
     "IMU1_roll",
-    "IMU1_pitch"
+    "IMU1_relative_yaw",
+    "IMU1_linear_jerkY",
+    "IMU1_angular_accelerationX",
+    "IMU2_gyrY",
+    "IMU2_acc_mag",
+    "IMU2_relative_yaw",
+    "IMU2_linear_jerkY",
+    "IMU2_angular_accelerationX",
+    "diff_gyrZ"
   ],
   "wrist_channels": [
     "IMU1_accX",
-    "IMU1_accY",
     "IMU1_accZ",
     "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU1_gyr_mag",
+    "IMU1_accY",
     "IMU1_gyrY",
-    "IMU1_gyrZ",
+    "IMU1_acc_mag",
     "IMU1_roll",
-    "IMU1_pitch"
+    "IMU1_relative_yaw",
+    "IMU1_linear_jerkY",
+    "IMU1_angular_accelerationX"
   ],
   "finger_channels": [
     "IMU2_accX",
     "IMU2_accY",
     "IMU2_accZ",
     "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
     "IMU2_gyrY",
-    "IMU2_gyrZ"
+    "IMU2_acc_mag",
+    "IMU2_relative_yaw",
+    "IMU2_linear_jerkY",
+    "IMU2_angular_accelerationX",
+    "diff_gyrZ"
   ],
   "feature_names": [],
+  "feature_toggles": {
+    "IMU1_linear_jerkX": false,
+    "IMU1_linear_jerkZ": false,
+    "IMU2_linear_jerkZ": false,
+    "IMU1_angular_accelerationY": false,
+    "IMU1_angular_accelerationZ": false,
+    "IMU2_angular_accelerationY": false,
+    "IMU1_accX": true,
+    "IMU1_accZ": true,
+    "IMU1_gyrX": true,
+    "IMU1_pitch": true,
+    "IMU2_accX": true,
+    "IMU2_accY": true,
+    "IMU2_accZ": true,
+    "IMU2_gyrX": true,
+    "diff_accX": true,
+    "diff_accZ": true,
+    "IMU1_gyr_mag": true,
+    "IMU1_accY": true,
+    "IMU1_gyrY": true,
+    "IMU1_gyrZ": false,
+    "IMU1_acc_mag": true,
+    "IMU1_roll": true,
+    "IMU1_relative_yaw": true,
+    "IMU1_linear_jerkY": true,
+    "IMU1_angular_accelerationX": true,
+    "IMU2_gyrY": true,
+    "IMU2_gyrZ": false,
+    "IMU2_gyr_mag": false,
+    "IMU2_acc_mag": true,
+    "IMU2_relative_yaw": true,
+    "IMU2_linear_jerkX": false,
+    "IMU2_linear_jerkY": true,
+    "IMU2_angular_accelerationX": true,
+    "IMU2_angular_accelerationZ": false,
+    "diff_accY": false,
+    "diff_gyrX": false,
+    "diff_gyrY": false,
+    "diff_gyrZ": true
+  },
   "machine_info": {
-    "hostname": "MacBook-Pro.local",
+    "hostname": "MacBook-Pro.fritz.box",
     "os": "Darwin-25.5.0",
     "cpu": "arm",
     "gpu": "MPS",
     "ram_gb": 64.0
   },
   "training_parameters": {
-    "epochs": 1,
+    "epochs": 15,
     "batch_size": 32,
     "learning_rate": 0.001,
     "split_type": "chronological",
@@ -66,65 +126,62 @@
     "jitter_range": 0,
     "sessions_used": [
       "#",
-      "session_1782598865",
-      "session_1782599482",
-      "session_1782599482_p2",
-      "session_1782599482_p3",
       "session_1782600797",
       "session_1782663416",
       "session_1782663628",
       "session_1782676777",
       "session_1782677998",
       "session_1782679027",
-      "session_1782679027_p2",
-      "session_1782679027_p3",
       "session_1782679421",
-      "session_1782679421_p2",
-      "session_1782679421_p3"
+      "session_1782751360",
+      "session_1782751666"
     ]
   },
   "split_info": {
     "strategy": "chronological",
-    "validation_session": null,
     "train_sessions": [
       "#",
-      "session_1782598865",
-      "session_1782599482",
-      "session_1782599482_p2",
-      "session_1782599482_p3",
       "session_1782600797",
       "session_1782663416",
       "session_1782663628",
       "session_1782676777",
       "session_1782677998",
       "session_1782679027",
-      "session_1782679027_p2",
-      "session_1782679027_p3",
       "session_1782679421",
-      "session_1782679421_p2",
-      "session_1782679421_p3"
+      "session_1782751360",
+      "session_1782751666"
+    ],
+    "test_sessions": [
+      "session_1782600797",
+      "session_1782663628",
+      "session_1782676777",
+      "session_1782677998",
+      "session_1782679027",
+      "session_1782679421",
+      "session_1782751360",
+      "session_1782751666"
     ]
   },
   "performance": {
-    "best_epoch": 1,
-    "train_accuracy": 0.55759596824646,
-    "train_loss": 1.4343749284744263,
-    "val_accuracy": 0.7866666913032532,
-    "val_loss": 1.5212111473083496,
-    "val_f1_score": 0.7021505376344086
+    "best_epoch": 15,
+    "train_accuracy": 1.0,
+    "train_loss": 0.010386915877461433,
+    "val_accuracy": 1.0,
+    "val_loss": 0.006005174480378628,
+    "val_f1_score": 1.0
   },
   "evaluation": {
-    "accuracy": 0.7866666666666666,
+    "accuracy": 1.0,
     "macro_avg": {
-      "precision": 0.7898936170212766,
-      "recall": 0.7333333333333333,
-      "f1-score": 0.7021505376344086,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
       "support": 150.0
     },
     "weighted_avg": {
-      "precision": 0.8319148936170213,
-      "recall": 0.7866666666666666,
-      "f1-score": 0.7617204301075269,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
       "support": 150.0
     },
     "per_class_metrics": {
@@ -147,9 +204,9 @@
         "support": 15.0
       },
       "circle_cw": {
-        "precision": 0.3191489361702128,
+        "precision": 1.0,
         "recall": 1.0,
-        "f1-score": 0.4838709677419355,
+        "f1-score": 1.0,
         "support": 15.0
       },
       "circle_ccw": {
@@ -160,20 +217,20 @@
       },
       "fist": {
         "precision": 1.0,
-        "recall": 0.6666666666666666,
-        "f1-score": 0.8,
+        "recall": 1.0,
+        "f1-score": 1.0,
         "support": 15.0
       },
       "jerk_down": {
         "precision": 1.0,
-        "recall": 0.2,
-        "f1-score": 0.3333333333333333,
+        "recall": 1.0,
+        "f1-score": 1.0,
         "support": 15.0
       },
       "jerk_up": {
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1-score": 0.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
         "support": 15.0
       }
     }
@@ -205,7 +262,8 @@
       "enabled": true,
       "method": "complementary",
       "imus": [
-        "IMU1"
+        "IMU1",
+        "IMU2"
       ],
       "alpha": 0.98,
       "degrees": true,
@@ -220,21 +278,21 @@
       ],
       "include_acc": true,
       "include_gyro": true,
-      "include_acc_magnitude": false,
-      "include_gyro_magnitude": false,
-      "include_diff_acc": false,
-      "include_diff_gyro": false,
+      "include_acc_magnitude": true,
+      "include_gyro_magnitude": true,
+      "include_diff_acc": true,
+      "include_diff_gyro": true,
       "include_orientation": true,
       "cross_correlation": false,
       "statistics": false,
-      "include_linear_jerk": false,
-      "include_angular_acceleration": false,
+      "include_linear_jerk": true,
+      "include_angular_acceleration": true,
       "include_relative_acceleration": false,
       "include_relative_rotation": false,
-      "include_relative_yaw": false,
+      "include_relative_yaw": true,
       "include_accelerometer_magnitude": false,
       "include_gyroscope_magnitude": false,
-      "include_gravity_free_linear_acceleration": false
+      "include_gravity_free_linear_acceleration": true
     }
   }
 }

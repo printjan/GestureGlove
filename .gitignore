@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .claude/
 config/devices.py
+config/powerpoint_control.yml
 config/devices.yml
 !config/devices.example.yml
 

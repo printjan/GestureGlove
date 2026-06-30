@@ -363,7 +363,14 @@ def load_dataset(config: PipelineConfig | None = None, data_dir: str | Path | No
                 logger.error("Failed to estimate calibration from %s: %s", cal_path, exc)
                 raise exc
 
-        group = session_dir.name if group_by == "session" else f"{gesture}/{session_dir.name}"
+        # Normalize session name by removing '_p[0-9]+' suffix to prevent session splitting leakage
+        session_name = session_dir.name
+        if "_p" in session_name:
+            parts = session_name.split("_p")
+            if len(parts) > 1 and parts[-1].isdigit():
+                session_name = "_p".join(parts[:-1])
+
+        group = session_name if group_by == "session" else f"{gesture}/{session_name}"
 
         for csv_path in sample_files:
             # Resolve the closest calibration strictly before this sample index

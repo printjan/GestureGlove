@@ -80,7 +80,46 @@ Setup:
 
 
 
-
+```
+*   `IMU1_linear_jerkX`
+*   `IMU1_linear_jerkZ`
+*   `IMU2_linear_jerkZ`
+*   `IMU1_angular_accelerationY`
+*   `IMU1_angular_accelerationZ`
+*   `IMU2_angular_accelerationY`
+*   `IMU1_accX`
+*   `IMU1_accZ`
+*   `IMU1_gyrX`
+*   `IMU1_pitch
+*   `IMU2_accX`
+*   `IMU2_accY`
+*   `IMU2_accZ`
+*   `IMU2_gyrX`
+*   `diff_accX`
+*   `diff_accZ`
+*   `IMU1_gyr_mag`
+*   `IMU1_accY`
+*   `IMU1_gyrY`
+*   `IMU1_gyrZ`
+*   `IMU1_acc_mag`
+*   `IMU1_roll`
+*   `IMU1_relative_yaw`
+*   `IMU1_linear_jerkY`
+*   `IMU1_angular_accelerationX`
+*   `IMU2_gyrY`
+*   `IMU2_gyrZ`
+*   `IMU2_gyr_mag`
+*   `IMU2_acc_mag`
+*   `IMU2_relative_yaw`
+*   `IMU2_linear_jerkX`
+*   `IMU2_linear_jerkY`
+*   `IMU2_angular_accelerationX`
+*   `IMU2_angular_accelerationZ`
+*   `diff_accY`
+*   `diff_gyrX`
+*   `diff_gyrY`
+*   `diff_gyrZ`
+```
 
 
 
