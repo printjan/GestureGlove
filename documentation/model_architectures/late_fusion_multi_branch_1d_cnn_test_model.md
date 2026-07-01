@@ -183,37 +183,180 @@ Each training run creates a directory under `models/late_fusion_cnn_test/trainin
 
 ## Model Metadata Structure (model_metadata.json)
 
-The `model_metadata.json` is a comprehensive descriptor file generated during training that serves as the single source of truth for the real-time inference script. It is structured into the following key blocks:
+The `model_metadata.json` is a comprehensive descriptor file generated during training that serves as the single source of truth for the real-time inference script and model audits. It is structured into the following key blocks:
 
 ### 1. Run & Architecture Identification
 *   `timestamp` (string): The timestamp identifier (`YYYYMMDD_HHMMSS`) of the training run.
 *   `model_name` (string): The registered name of the architecture class.
 *   `training_duration_s` (float): The total execution time of the training epochs in seconds.
 *   `epochs_trained` (int): Number of epochs completed before training terminated.
+*   `early_stopped` (boolean): `true` if training was aborted early by the `EarlyStopping` callback (i.e. before reaching the maximum epoch limit), `false` otherwise.
 *   `classes` (list of strings): The ordered list of classified gesture names (determines the output neuron index).
 
 ### 2. Feature & Input Shape Configurations
-*   `feature_toggles` (object): Key-value map of all 37 possible mathematical features to boolean flags. Enabled features (`true`) are actively computed; disabled features (`false`) are ignored. The disabled features are not used at all - we identified those during our feature analysis.
+*   `feature_toggles` (object): Key-value map of all 37 possible mathematical features to boolean flags. Enabled features (`true`) are actively computed; disabled features (`false`) are ignored.
+*   `features_selection` (object): Lists of active and inactive features for direct auditing:
+    *   `default_selected_features` (list of strings): Features that are selected/active for this specific model configuration.
+    *   `default_deselected_features` (list of strings): Features that are deselected/inactive.
 *   `channels` (list of strings): The ordered list of all active features in the flat concatenated dataset.
 *   `wrist_channels` (list of strings): Active feature channels directed into the Wrist branch. Used by the inference script to slice the sliding window's Wrist input array dynamically.
 *   `finger_channels` (list of strings): Active feature channels directed into the Finger branch. Used by the inference script to slice the sliding window's Finger input array dynamically.
 
-### 3. Hyperparameters & Splits
-*   `training_parameters` (object): Includes the learning rate, batch size, split strategy (`chronological` or `leave-session-out`), test fraction, and random seed.
-*   `split_info` (object): Logs the exact recording sessions used for training (`train_sessions`) vs. testing (`test_sessions`), ensuring validation isolation.
+### 3. Model Structure & Component Size Details
+*   `model_structure` (object): Dynamic layer-by-layer layout summary of the compiled Keras network:
+    *   `total_parameters` (int): Total parameter count of the model (sum of weights and biases).
+    *   `layers` (list of objects): Each layer contains:
+        *   `layer_name` (string): Unique identifier name of the layer in the Keras graph.
+        *   `class_name` (string): The Keras class type (e.g. `Conv1D`, `BatchNormalization`, `Dense`, `Dropout`).
+        *   `output_shape` (list of dimensions/nulls): Slicing resolution (e.g. `[null, 150, 16]`).
+        *   `parameter_count` (int): Number of weights/biases learned in this specific layer.
 
-### 4. Performance Metrics
+### 4. Hyperparameters & Splits
+*   `training_parameters` (object): Includes the learning rate, batch size, split strategy (`chronological`, `leave-session-out`, or `stratified`), test fraction, and random seed.
+*   `split_info` (object): Records both session groupings and real data sizes:
+    *   `strategy` (string): Selected splitting method.
+    *   `total_samples` (int): Total size of the processed dataset.
+    *   `train_size_abs` / `val_size_abs` / `test_size_abs` (ints): Absolute counts of windows allocated to each disjoint split.
+    *   `train_fraction_real` / `val_fraction_real` / `test_fraction_real` (floats): Real decimal percentages of windows allocated.
+    *   `train_sessions` / `val_sessions` / `test_sessions` (lists of strings): Lists of recording session IDs assigned to each split.
+
+### 5. Performance Metrics
 *   `performance` (object): Tracks the validation and training accuracy/loss at the best epoch, along with the macro validation F1-score.
 *   `evaluation` (object): Full post-training metrics breakdown, including precision, recall, F1-score, and support sample counts per individual class.
 
-### 5. Data Preprocessing Pipeline Configuration
+### 6. Data Preprocessing Pipeline Configuration
 Represents the exact preprocessing pipeline configuration used to transform raw sensor readings during training:
 *   `sample_rate_hz` (float): The expected sensor sampling rate (100 Hz).
 *   `window_size` (int): Number of samples per sliding window (150 samples = 1.5s).
-*   `calibration` (object): Calibration offset policies (e.g. whether gyroscope bias is removed and accelerometer readings are normalized to gravity Gs).
-*   `filters` (object): High-pass and low-pass filtering parameters (e.g. Butterworth filter cutoff frequencies).
-*   `orientation` (object): Sensor fusion complementary filter alpha coefficients (determines the weighting of accelerometer tilt vs. gyroscope integration).
-*   `features` (object): Configures the **feature generation / extraction phase**. It specifies which derived mathematical channels (e.g., magnitudes, sensor differences, linear jerks, angular accelerations, and relative yaw) are computed and loaded from the raw IMU readings when compiling the dataset baseline. Any feature family disabled here (`false`) is not generated at all, while enabled families (`true`) are loaded into the baseline pool where they can then be selected or pruned by `feature_toggles`.
+*   `calibration` (object): Calibration offset policies.
+*   `filters` (object): High-pass and low-pass filtering parameters.
+*   `orientation` (object): Sensor fusion alpha coefficients.
+*   `features` (object): Configures the **feature generation / extraction phase**.
+
+---
+
+### JSON Schema Blueprint (`model_metadata.json`)
+
+Here is an example layout demonstrating the exact structure of a generated metadata package:
+
+```json
+{
+  "timestamp": "training_session_size_test_conv16_dense16",
+  "model_name": "late_fusion_cnn_test",
+  "training_duration_s": 26.2945,
+  "epochs_trained": 62,
+  "early_stopped": true,
+  "classes": [
+    "none",
+    "swipe_left",
+    "swipe_right",
+    "circle_cw",
+    "circle_ccw",
+    "fist",
+    "jerk_down",
+    "jerk_up"
+  ],
+  "channels": [
+    "IMU1_accX",
+    "IMU1_accZ"
+  ],
+  "wrist_channels": [
+    "IMU1_accX",
+    "IMU1_accZ"
+  ],
+  "finger_channels": [],
+  "feature_names": [],
+  "feature_toggles": {
+    "IMU1_accX": true,
+    "IMU1_accZ": true,
+    "IMU1_accY": false
+  },
+  "features_selection": {
+    "default_selected_features": [
+      "IMU1_accX",
+      "IMU1_accZ"
+    ],
+    "default_deselected_features": [
+      "IMU1_accY"
+    ]
+  },
+  "model_structure": {
+    "total_parameters": 2584,
+    "layers": [
+      {
+        "layer_name": "wrist_input",
+        "class_name": "InputLayer",
+        "output_shape": [
+          null,
+          150,
+          11
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "wrist_conv1",
+        "class_name": "Conv1D",
+        "output_shape": [
+          null,
+          150,
+          16
+        ],
+        "parameter_count": 896
+      }
+    ]
+  },
+  "training_parameters": {
+    "epochs": 70,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "split_type": "chronological",
+    "test_fraction": 0.27,
+    "val_fraction": 0.15,
+    "seed": 42
+  },
+  "split_info": {
+    "strategy": "chronological",
+    "total_samples": 1950,
+    "train_size_abs": 1132,
+    "val_size_abs": 292,
+    "test_size_abs": 526,
+    "train_fraction_real": 0.5805,
+    "val_fraction_real": 0.1497,
+    "test_fraction_real": 0.2697,
+    "train_sessions": [
+      "session_1782600797"
+    ],
+    "val_sessions": [
+      "session_1782830502"
+    ],
+    "test_sessions": [
+      "session_1782830502"
+    ]
+  },
+  "performance": {
+    "best_epoch": 42,
+    "train_accuracy": 0.8942,
+    "train_loss": 0.2901,
+    "val_accuracy": 0.9406,
+    "val_loss": 0.2177,
+    "val_f1_score": 0.9686
+  },
+  "evaluation": {
+    "accuracy": 0.9626,
+    "macro_avg": {
+      "precision": 0.9532,
+      "recall": 0.9864,
+      "f1-score": 0.9686,
+      "support": 428.0
+    }
+  },
+  "pipeline_config": {
+    "sample_rate_hz": 100.0,
+    "window_size": 150,
+    "pad_mode": "edge"
+  }
+}
+```
 
 ---
 
