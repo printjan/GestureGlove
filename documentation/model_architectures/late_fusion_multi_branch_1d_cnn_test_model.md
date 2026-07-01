@@ -373,9 +373,18 @@ python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 1
 *   **Performance:** Test Accuracy: **48.00%** | Macro F1-Score: **28.84%** | Best Val Loss: **2.7887** (Epoch 1).
 *   **Target Run Directory:** [training_session_split_test_leave-session-out](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out/)
 *   **Composition & Flaw Analysis:**
-    These experiments were run on the **third version of the dataset** (1600 samples, 20 unique session groups recorded by a single subject). Each physical recording session represents a single sensor mounting alignment. Crucially, each session only contains recordings of a *single gesture class* (with minor exceptions).
-    
-    When splits are determined on a session-wide basis (holding out 4 sessions for Test and 2 for Val), the small number of sessions per class (mostly 2) mathematically guarantees that entire classes are completely excluded from splits:
+    These experiments were run on the **third version of the dataset** (1600 samples, 20 unique session groups recorded by a single subject). Each physical recording session represents a single sensor mounting alignment. Crucially, each session only contains recordings of a *single gesture class* (with minor exceptions). When splits are determined on a session-wide basis (holding out 4 sessions for Test and 2 for Val), the small number of sessions per class (mostly 2) mathematically guarantees that entire classes are completely excluded from splits:
+
+#### **3. Leave-Session-Out Split**
+
+##### **Implementation**
+The default Leave-Session-Out split is implemented as follows:
+* **Grouping**: Unique recording sessions are sorted alphabetically to establish a baseline order.
+* **Permutation**: A random number generator is initialized with a **fixed seed (`seed=42`)** and permutes the sorted session array: `order = rng.permutation(len(unique))`.
+* **Partitioning**: The permuted sessions are sliced sequentially: the first 20% (4 sessions) are assigned to Test, the next 10% (2 sessions) to Val, and the remaining 70% (14 sessions) to Train.
+* **Reproducability**: Although the split utilizes a random number generator, the **fixed seed ensures the split is 100% deterministic and reproducible**.
+* **Error**:
+  * These experiments were run on the **third version of the dataset** (1600 samples, 20 unique session groups recorded by a single subject). Each physical recording session represents a single sensor mounting alignment. Crucially, each session only contains recordings of a *single gesture class* (with minor exceptions). When splits are determined on a session basis, the small number of sessions per class (mostly 2) mathematically guarantees that entire classes are completely excluded from splits:
 
 ```mermaid
 flowchart TD
@@ -403,23 +412,24 @@ flowchart TD
     Test --> Te_jerk_d["jerk_down: 75"]
     Test --> Te_others["others: 0"]
 ```
-
 * **Flaw Mechanism**:
-    1. **Zero-Train Class (`fist`)**: The model had zero training samples for `fist`, yet `fist` accounted for 25% of the test set (75 samples). Since it was OOD (Out-of-Distribution), the model predicted 100% of these samples as `none` (0% recall), dragging down the overall accuracy.
-    2. **Zero-Test Classes (`swipe_right`, `circle_ccw`, `jerk_up`, `none`)**: The model was trained on these classes, but they had zero representation in the test set. Their generalization performance was completely unmeasured.
+The class-exclusion graph reveals a major flaw that compromises the entire training run:
+  * **Blind Early Stopping**: The validation set contains *only* `none` and `fist` classes. It contains **zero samples** of the other 6 gesture classes.
+  * **Loss Divergence**: Because `fist` is OOD (Out-of-Distribution) it is never seen during training, so the validation loss is computed on a class the model cannot classify. This causes the validation loss to spike immediately.
+  * **Premature Halting**: The early stopping callback, monitoring this skewed validation loss, terminated training at **Epoch 1** and restored the initial random weights.
+  * **Analysis Validity**: Any analysis of this model's performence would be **highly compromised**. It represents the generalization capability of a model that was barely trained because the validation feedback loop was broken.
 
-* **Interpretation of the Leave-Session-Out Performance**: To isolate the impact of class-exclusion from actual cross-session generalization, we compute performance metrics restricted **only** to the active classes represented in both the Train and Test splits (`swipe_left`, `circle_cw`, `jerk_down`):
-  * **Classwise Generalization Breakdown:**
-    * **`swipe_left` (84.0% correct):** 63 correct, 12 misclassified as `none` (idle). **0% confusion** with other active gestures.
-    * **`circle_cw` (62.7% correct):** 47 correct, 28 misclassified as `none` (idle). **0% confusion** with other active gestures.
-    * **`jerk_down` (45.3% correct):** 34 correct, 14 misclassified as `none`, 27 misclassified as `circle_ccw` (which also features downward movement dynamics).
-    * **`fist` (0% correct, untrained):** 100% (75/75) predicted as `none`. This confirms that out-of-distribution (OOD) classes safely fall back to the idle class without false-triggering other gestures.
-  * **Accuracy on Represented Classes:** **64.00%** (144 out of 225 samples).
+##### **Resolution: Balanced Custom Leave-Session-Out Split**
+To isolate the physical impact of sensor repositioning from the software issues of class-exclusion and early stopping, we manually constructed a **Balanced Leave-Session-Out Split** during the recording of the fouth dataset version:
+* **Manual Split**: The complete third version of the dataset is use for training.
+* **Validation Set**: The fourth version of the dataset expands the third version of the dataset by two new recording sessions `test` and `val` for all gestures. Between recording the test and val sessions, the user repositioned the sensors on their arm.
+* **This way every single class can be represented in the train, test and validation set without information leakage**.
 
-* **Generalization Judgment:**
-    * **Sensor Positioning Sensitivity:** The drop from 96%+ (chronological split) to 64% (restricted leave-session-out) is a clear indication of domain shift. Because the entire dataset was recorded by a single user, this performance gap is driven solely by **physical sensor mounting offsets** (rotational and translational displacement of the wrist armband and finger strap) between different recording sessions.
-    * **Structural Robustness:** While the model exhibits sensitivity to amplitude and offset shifts (resulting in false negatives/predictions of `none`), its structural generalization is actually quite robust: it **almost never confuses distinct active gestures** with each other across sessions (e.g. `swipe_left` is never predicted as `circle_cw` or `jerk_down`).
-    * **Remediation**: To make the model truly robust to sensor positioning, we need a dataset containing multiple distinct sessions per gesture class (at least 3 to support a valid 3-way split) and must utilize robust normalization, data augmentation (like 3D rotation), or real-time calibration updates.
+
+```
+
+##### **D. Generalization Judgment**
+
 
 
 #### **4. Impact of Dataset Split Size (Training Session 17)**
