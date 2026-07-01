@@ -5,6 +5,7 @@ Asynchronous Data Grabber for real-time sensor processing and inference decoupli
 
 import threading
 import time
+from collections import deque
 from typing import Callable, Optional, Tuple, Any
 import numpy as np
 import pandas as pd
@@ -36,6 +37,7 @@ class AsynchronousDataGrabber:
         transform_fn: Optional[Callable[[np.ndarray, list[str]], Any]] = None,
         poll_interval_s: float = 0.01,
         enable_zupt: bool = True,
+        zupt_stillness_s: float = 2.0,
     ) -> None:
         self.imu1 = imu1
         self.imu2 = imu2
@@ -48,10 +50,14 @@ class AsynchronousDataGrabber:
         self.transform_fn = transform_fn
         self.poll_interval_s = poll_interval_s
         self.enable_zupt = enable_zupt
+        self.zupt_stillness_s = zupt_stillness_s
 
         self.window_us = int((self.window_size_samples / self.freq_hz) * 1e6)
         self.advance_us = int((self.advance_samples / self.freq_hz) * 1e6)
         self._last_zupt_log_time = 0.0
+
+        self.zupt_samples = int(self.zupt_stillness_s * self.freq_hz)
+        self._zupt_buffer = deque(maxlen=self.zupt_samples)
 
         # Thread-safe slot for the latest preprocessed frame/data
         self._latest_frame: Optional[Any] = None
@@ -135,43 +141,56 @@ class AsynchronousDataGrabber:
                     
                     # --- Zero-Velocity Updates (ZUPT) background calibration ---
                     if self.enable_zupt:
-                        beta = 0.1  # EMA smoothing factor
-                        gyro_std_threshold = 3.0   # dps
-                        acc_std_threshold = 0.025  # g
+                        # Append the newly advanced rows to the rolling buffer
+                        if not self._zupt_buffer:
+                            for _, row in window_df.iterrows():
+                                self._zupt_buffer.append(row.to_dict())
+                        else:
+                            new_rows = window_df.iloc[-self.advance_samples:]
+                            for _, row in new_rows.iterrows():
+                                self._zupt_buffer.append(row.to_dict())
                         
-                        for imu in ["IMU1", "IMU2"]:
-                            acc_cols = [f"{imu}_accX", f"{imu}_accY", f"{imu}_accZ"]
-                            gyr_cols = [f"{imu}_gyrX", f"{imu}_gyrY", f"{imu}_gyrZ"]
-                            if not all(c in window_df.columns for c in acc_cols + gyr_cols):
-                                continue
+                        # Once we have enough samples to perform the stillness check
+                        if len(self._zupt_buffer) >= self.zupt_samples:
+                            zupt_df = pd.DataFrame(self._zupt_buffer)
                             
-                            acc_raw = window_df[acc_cols].to_numpy(dtype=float)
-                            gyr_raw = window_df[gyr_cols].to_numpy(dtype=float)
+                            beta = 0.1  # EMA smoothing factor
+                            gyro_std_threshold = 3.0   # dps
+                            acc_std_threshold = 0.025  # g
                             
-                            acc_std = np.std(acc_raw, axis=0)
-                            gyr_std = np.std(gyr_raw, axis=0)
-                            
-                            if np.all(acc_std < acc_std_threshold) and np.all(gyr_std < gyro_std_threshold):
-                                # Measured raw gyro bias
-                                measured_gyro_bias = np.mean(gyr_raw, axis=0)
+                            for imu in ["IMU1", "IMU2"]:
+                                acc_cols = [f"{imu}_accX", f"{imu}_accY", f"{imu}_accZ"]
+                                gyr_cols = [f"{imu}_gyrX", f"{imu}_gyrY", f"{imu}_gyrZ"]
+                                if not all(c in zupt_df.columns for c in acc_cols + gyr_cols):
+                                    continue
                                 
-                                from data_fusion_project.processing.calibration import ImuCalibration
-                                calib = self.calibration_profile.per_imu.get(imu)
-                                if calib is None:
-                                    calib = ImuCalibration()
-                                    self.calibration_profile.per_imu[imu] = calib
+                                acc_raw = zupt_df[acc_cols].to_numpy(dtype=float)
+                                gyr_raw = zupt_df[gyr_cols].to_numpy(dtype=float)
+                                
+                                acc_std = np.std(acc_raw, axis=0)
+                                gyr_std = np.std(gyr_raw, axis=0)
+                                
+                                if np.all(acc_std < acc_std_threshold) and np.all(gyr_std < gyro_std_threshold):
+                                    # Measured raw gyro bias
+                                    measured_gyro_bias = np.mean(gyr_raw, axis=0)
                                     
-                                old_bias = calib.gyro_bias.copy()
-                                calib.gyro_bias = (1 - beta) * old_bias + beta * measured_gyro_bias
-                                
-                                now = time.time()
-                                if now - self._last_zupt_log_time > 1.0:
-                                    logger.info("[%s ZUPT] Stillness detected. Updated gyro bias from %s to %s",
-                                                imu, np.round(old_bias, 3), np.round(calib.gyro_bias, 3))
-                                    import sys
-                                    sys.stdout.write(f"\n\033[94m[ZUPT] Stillness detected. Recalibrated {imu} gyro bias to {np.round(calib.gyro_bias, 3)}\033[0m\n")
-                                    sys.stdout.flush()
-                                    self._last_zupt_log_time = now
+                                    from data_fusion_project.processing.calibration import ImuCalibration
+                                    calib = self.calibration_profile.per_imu.get(imu)
+                                    if calib is None:
+                                        calib = ImuCalibration()
+                                        self.calibration_profile.per_imu[imu] = calib
+                                        
+                                    old_bias = calib.gyro_bias.copy()
+                                    calib.gyro_bias = (1 - beta) * old_bias + beta * measured_gyro_bias
+                                    
+                                    now = time.time()
+                                    if now - self._last_zupt_log_time > 1.0:
+                                        logger.info("[%s ZUPT] Stillness detected. Updated gyro bias from %s to %s",
+                                                    imu, np.round(old_bias, 3), np.round(calib.gyro_bias, 3))
+                                        import sys
+                                        sys.stdout.write(f"\n\033[94m[ZUPT] Stillness detected. Recalibrated {imu} gyro bias to {np.round(calib.gyro_bias, 3)}\033[0m\n")
+                                        sys.stdout.flush()
+                                        self._last_zupt_log_time = now
                     
                     try:
                         channels, channel_names, _, _ = process_window(

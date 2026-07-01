@@ -130,6 +130,12 @@ def parse_args():
         action="store_true",
         help="Disable background Zero-Velocity Updates (ZUPT) recalibration."
     )
+    parser.add_argument(
+        "--zupt-duration",
+        type=float,
+        default=2.0,
+        help="Sustained stillness duration in seconds required for background ZUPT recalibration (default: 2.0)."
+    )
     return parser.parse_args()
 
 
@@ -473,7 +479,8 @@ def main():
             max_diff_us=10000,
             transform_fn=transform_fn,
             poll_interval_s=0.01,
-            enable_zupt=not args.no_zupt
+            enable_zupt=not args.no_zupt,
+            zupt_stillness_s=args.zupt_duration
         )
         
         # Silence frequent background sync/packet logs during the streaming loop

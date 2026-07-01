@@ -281,7 +281,7 @@ It is critical that the calibration pipeline used during offline model training 
   * This ensures the CNN models are trained on **perfectly clean, zero-bias, gravity-normalized waveforms**, allowing the model to focus purely on the shape and trajectory of the gesture, decoupled from hardware-specific variances.
 * **Real-Time Inference Pipeline:**
   * In the continuous classification runtime (e.g., running sliding-window predictions to control PowerPoint), the incoming sensor stream contains raw, uncorrected offsets.
-  * At startup, the user is prompted to run a **5-second static calibration pose** (holding still). The system computes the current real-time gyro bias and gravity scale factor.
+  * At startup, the user is prompted to run a **6-second static calibration pose** (of which 500 samples are used for calibration). The system computes the current real-time gyro bias and gravity scale factor.
   * These real-time calibration offsets are continuously subtracted/scaled from every incoming sliding window *before* the window is passed to the CNN.
   * This guarantees that the inputs entering the model at runtime match the mathematical distribution it saw during training, preventing prediction degradation due to sensor drift or placement variations.
 

@@ -248,6 +248,7 @@ def test_grabber_zupt_calibration_updates():
         window_size_samples=50,
         advance_samples=5,
         poll_interval_s=0.005,
+        zupt_stillness_s=0.5,
     )
 
     # Initialize bias to zero
@@ -305,6 +306,7 @@ def test_grabber_zupt_calibration_updates():
         advance_samples=5,
         poll_interval_s=0.005,
         enable_zupt=False,
+        zupt_stillness_s=0.5,
     )
     grabber_disabled.start()
 

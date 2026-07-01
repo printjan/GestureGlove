@@ -124,7 +124,7 @@ Setup:
 *   `diff_gyrX` 
 *   `diff_gyrY` 
 *   `diff_gyrZ`
-```
+
 
 
 
@@ -461,7 +461,7 @@ Earlier we defined three implementation plans for three different CNN architectu
 
 ### Real time calibration
 
-Strategy idea: Because the drift is dynamic and non-linear, a single initial calibration is insufficient. To keep the demo seamless without forcing the user to pause manually, we should implement Zero-Velocity Updates (ZUPT) in the background: when the hand is resting (std dev is very low for a few seconds), the system should automatically update the gyroscope bias registers in real-time. How it works: The system continuously monitors the standard deviation of gyroscope and accelerometer signals. When it detects a sustained still window (e.g. hand resting on the table for 2 seconds where std < 3.0 dps and < 0.025g), it automatically recalculates the mean zero-bias and updates the calibration profile registers in the background.
+Strategy idea: Because the drift is dynamic and non-linear (as our calibration quality audit revealed), a single initial calibration is insufficient. To keep the demo seamless without forcing the user to pause manually, we should implement Zero-Velocity Updates (ZUPT) in the background: when the hand is resting (std dev is very low for a few seconds), the system should automatically update the gyroscope bias registers in real-time. How it works: The system continuously monitors the standard deviation of gyroscope and accelerometer signals. When it detects a sustained still window (e.g. hand resting on the table for 2 seconds where std < 3.0 dps and < 0.025g), it automatically recalculates the mean zero-bias and updates the calibration profile registers in the background.
 
 
 
