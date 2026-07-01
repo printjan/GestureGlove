@@ -45,6 +45,10 @@ The real-time inference system executes in the following sequence:
   ```bash
   python scripts/run_realtime_inference_test_async.py --model-dir models/late_fusion_cnn_test --threshold 0.90 --evaluate --objection-window 1.8 --eval-out reports/
   ```
+* **Optimum Config for Real-Time Testing:**
+  ```bash
+  python scripts/run_realtime_inference_test_async.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --evaluate --objection-window 1.8 --eval-out reports/ --zupt-duration 3.5  --cooldown 2.0
+  ```
 
 ---
 
@@ -156,6 +160,12 @@ To eliminate gyroscope bias drift over time (which skew integrated orientation e
     $$\mathbf{b}_{new} = (1 - \beta) \cdot \mathbf{b}_{current} + \beta \cdot \mathbf{b}_{measured}$$
 *   **CLI Control**: ZUPT can be toggled via `--no-zupt`. The stillness duration threshold is configurable via `--zupt-duration <seconds>` (default: 2.0 seconds).
 *   **Output Logging**: Recalibration events are printed to terminal (stdout) in blue text, rate-limited to at most once per second to prevent clutter.
+
+### Gesture De-bouncing & Cooldown Lockout
+To ensure slide actions are only triggered once per intended gesture, the system implements a de-bouncing and cooldown lockout pipeline:
+*   **Confidence Thresholding**: Predictions are ignored unless their Softmax probability exceeds the confidence threshold (configurable via `--threshold`, default `0.80` or `0.95`).
+*   **Release Gating (`require_release=True`)**: The user must return their hand to a neutral position (`none` state or a low-confidence reading) to re-arm the system before another gesture can fire.
+*   **Cooldown Timer**: Firing a gesture triggers a time lock (`--cooldown <seconds>`, default `1.0` s) during which all subsequent gesture predictions are ignored. This prevents transient variations within a single physical gesture from causing double slide transitions.
 
 ---
 
