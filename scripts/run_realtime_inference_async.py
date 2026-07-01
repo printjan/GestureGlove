@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-# scripts/run_realtime_inference.py
+# scripts/run_realtime_inference_async.py
 """
-Prototype script to run real-time inference using the trained multi-branch CNN.
-Performs a 5-second initial calibration, connects to both IMU sensors, and
-runs continuous sliding window predictions.
+Script to run real-time inference using the trained multi-branch CNN,
+leveraging the AsynchronousDataGrabber to decouple serial ingestion and preprocessing
+from the model execution thread.
 """
 
 import sys
@@ -53,10 +53,11 @@ from data_fusion_project.control import (
     DryRunBackend,
     PyAutoGuiBackend,
 )
+from data_fusion_project.inference import AsynchronousDataGrabber
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Real-Time CNN Inference Prototype")
+    parser = argparse.ArgumentParser(description="Async Real-Time CNN Inference")
     parser.add_argument(
         "--model-dir",
         type=str,
@@ -108,9 +109,6 @@ def parse_args():
 def build_dispatcher(args):
     """
     Build the gesture dispatcher wired to a PowerPoint controller.
-
-    Returns (dispatcher, live) where ``live`` is True when a real key-sending backend is
-    active. Returns (None, False) when control is disabled via ``--no-control``.
     """
     if args.no_control:
         return None, False
@@ -209,14 +207,6 @@ def record_calibration(imu1: IMUDataInput, imu2: IMUDataInput, config: Calibrati
     return merged
 
 
-def _trim_before(buf, cutoff_us):
-    i = 0
-    while i < len(buf) and buf[i]['pc_timestamp_us'] < cutoff_us:
-        i += 1
-    if i:
-        del buf[:i]
-
-
 def print_prediction(class_name, prob, threshold):
     """
     Prints a formatted, color-coded prediction bar on the current terminal line.
@@ -225,17 +215,13 @@ def print_prediction(class_name, prob, threshold):
     filled = int(round(prob * bar_width))
     bar = "█" * filled + "░" * (bar_width - filled)
     
-    # Color-coding based on active status and confidence threshold
     if prob >= threshold and class_name != "none":
-        # Green highlighted for successfully triggered gesture
         color_start = "\033[92m\033[1m"
         color_end = "\033[0m"
     elif class_name == "none":
-        # Gray for stillness
         color_start = "\033[90m"
         color_end = "\033[0m"
     else:
-        # Yellow for gesture predicted but below threshold
         color_start = "\033[93m"
         color_end = "\033[0m"
         
@@ -247,13 +233,12 @@ def main():
     args = parse_args()
     model_dir = Path(args.model_dir)
     
-    # Resolve the model directory (fallback to project root if relative)
     if not model_dir.is_absolute() and not model_dir.exists():
         fallback_path = PROJECT_ROOT / model_dir
         if fallback_path.exists():
             model_dir = fallback_path
 
-    ui.hr(title="Real-Time CNN Inference Prototype")
+    ui.hr(title="Async Real-Time CNN Inference")
     
     if not model_dir.exists():
         ui.error(f"Model directory not found: {model_dir}")
@@ -298,7 +283,6 @@ def main():
     wrist_shape = (config.window_size, len(metadata["wrist_channels"]))
     finger_shape = (config.window_size, len(metadata["finger_channels"]))
 
-    # Extract network layout parameters if present, defaulting to baseline shapes
     train_params = metadata.get("training_parameters", {})
     conv_filters = train_params.get("conv_filters", [32, 64])
     dense_units = train_params.get("dense_units", 64)
@@ -336,8 +320,6 @@ def main():
     # 4. Resolve Device Ports & Initialize
     if args.simulate:
         class MockIMU:
-            _start_time_us = int(time.time() * 100) * 10000
-
             def __init__(self, name):
                 self.name = name
                 self.running = False
@@ -353,6 +335,8 @@ def main():
                 
             def stop(self):
                 self.running = False
+                if self._thread:
+                    self._thread.join()
                 
             def get_data(self):
                 with self.lock:
@@ -407,33 +391,51 @@ def main():
             imu2.stop()
             sys.exit(1)
 
+    # 5. Define transform callback for Asynchronous Frame Grabber
+    def transform_fn(channels, channel_names):
+        wrist_idx = [channel_names.index(ch) for ch in metadata["wrist_channels"]]
+        finger_idx = [channel_names.index(ch) for ch in metadata["finger_channels"]]
+
+        X_wrist = channels[:, wrist_idx][np.newaxis, :, :]
+        X_finger = channels[:, finger_idx][np.newaxis, :, :]
+
+        X_wrist_scaled = scaler_wrist.transform(X_wrist)
+        X_finger_scaled = scaler_finger.transform(X_finger)
+        
+        return X_wrist_scaled, X_finger_scaled
+
+    grabber = None
     try:
-        # 5. Run Initial Calibration
+        # Run Initial Calibration
         cal_df = record_calibration(imu1, imu2, config.calibration)
         profile = estimate_calibration(cal_df, config.calibration)
         ui.success("Static calibration completed and estimated.")
+        
+        # Initialize and start Data Grabber
+        grabber = AsynchronousDataGrabber(
+            imu1=imu1,
+            imu2=imu2,
+            pipeline_config=config,
+            calibration_profile=profile,
+            window_size_samples=config.window_size,
+            advance_samples=10,
+            freq_hz=100.0,
+            max_diff_us=10000,
+            transform_fn=transform_fn,
+            poll_interval_s=0.01
+        )
         
         # Silence frequent background sync/packet logs during the streaming loop
         from data_fusion_project.core.logger_setup import set_log_level
         set_log_level("WARNING")
         
-        ui.hr(title="Live Inference Active")
+        ui.hr(title="Live Inference Active (Asynchronous)")
         if dispatcher is not None:
             ui.info("Perform gestures to control PowerPoint in real time. Press Ctrl+C to exit.\n")
         else:
             ui.info("Perform gestures to see real-time classifications. Press Ctrl+C to exit.\n")
         
-        # 6. Sliding Window Inference Loop
-        local_buf1 = []
-        local_buf2 = []
-        
-        window_us = int(1.5 * 1e6)  # 1.5 seconds window size
-        advance_us = 100000        # Evaluate every 10 samples (100 ms)
-        next_start_us = None
-        
-        # Clear data queues to start prediction cleanly
-        imu1.get_data()
-        imu2.get_data()
+        grabber.start()
         
         start_time_loop = time.time()
         while True:
@@ -441,79 +443,40 @@ def main():
                 ui.info(f"\nSimulated run timeout of {args.timeout}s reached. Exiting cleanly.")
                 break
                 
-            if not imu1.running or not imu2.running:
-                ui.error("\nConnection lost to sensor.")
-                break
-                
-            time.sleep(0.05)
-            
-            # Fetch new packets
-            local_buf1.extend(imu1.get_data())
-            local_buf2.extend(imu2.get_data())
-            
-            if not local_buf1 or not local_buf2:
+            # Block up to 100ms for a new preprocessed frame
+            frame = grabber.get_newest_frame(block=True, timeout=0.1)
+            if frame is None:
                 continue
                 
-            if next_start_us is None:
-                next_start_us = max(local_buf1[0]['pc_timestamp_us'], local_buf2[0]['pc_timestamp_us'])
-                
-            latest_us = min(local_buf1[-1]['pc_timestamp_us'], local_buf2[-1]['pc_timestamp_us'])
-            if latest_us - next_start_us < window_us:
-                continue
-                
-            # Align and extract window
-            df1 = pd.DataFrame(local_buf1)
-            df2 = pd.DataFrame(local_buf2)
-            merged_win, valid_windows = process_stream(
-                df1, df2, window_sz=config.window_size, max_diff_us=10000, freq_hz=100
+            X_wrist_scaled, X_finger_scaled = frame
+            
+            # Predict
+            preds = model.predict(
+                {"wrist_input": X_wrist_scaled, "finger_input": X_finger_scaled},
+                verbose=0
             )
             
-            if valid_windows:
-                window_df = valid_windows[0]
-                
-                # Preprocess features (Filter + Complementary roll/pitch orientation)
-                channels, channel_names, _, _ = process_window(window_df, profile, config)
+            pred_idx = np.argmax(preds[0])
+            prob = preds[0][pred_idx]
+            class_name = classes[pred_idx]
+            
+            # Display output
+            print_prediction(class_name, prob, args.threshold)
 
-                # Slice and reshape inputs
-                wrist_idx = [channel_names.index(ch) for ch in metadata["wrist_channels"]]
-                finger_idx = [channel_names.index(ch) for ch in metadata["finger_channels"]]
-
-                X_wrist = channels[:, wrist_idx][np.newaxis, :, :]
-                X_finger = channels[:, finger_idx][np.newaxis, :, :]
-
-                # Apply time-series scaling
-                X_wrist_scaled = scaler_wrist.transform(X_wrist)
-                X_finger_scaled = scaler_finger.transform(X_finger)
-
-                # Predict
-                preds = model.predict(
-                    {"wrist_input": X_wrist_scaled, "finger_input": X_finger_scaled},
-                    verbose=0
-                )
-                
-                pred_idx = np.argmax(preds[0])
-                prob = preds[0][pred_idx]
-                class_name = classes[pred_idx]
-                
-                # Display output
-                print_prediction(class_name, prob, args.threshold)
-
-                # Feed the prediction to the control dispatcher (de-bounced).
-                # A fired action is printed on its own line so the live bar is not clobbered.
-                if dispatcher is not None:
-                    fired_action = dispatcher.feed(class_name, prob)
-                    if fired_action is not None:
-                        sys.stdout.write(f"\n\033[96m\033[1m  --> Action triggered: {fired_action}\033[0m\n")
-                        sys.stdout.flush()
-
-            # Slide window forward
-            next_start_us += advance_us
-            _trim_before(local_buf1, next_start_us)
-            _trim_before(local_buf2, next_start_us)
+            # Feed the prediction to the control dispatcher (de-bounced).
+            if dispatcher is not None:
+                fired_action = dispatcher.feed(class_name, prob)
+                if fired_action is not None:
+                    sys.stdout.write(f"\n\033[96m\033[1m  --> Action triggered: {fired_action}\033[0m\n")
+                    sys.stdout.flush()
 
     except KeyboardInterrupt:
         ui.info("\nExiting real-time inference loop...")
+    except Exception as e:
+        ui.error(f"\nError occurred during live inference: {e}")
     finally:
+        if grabber:
+            grabber.stop()
         imu1.stop()
         imu2.stop()
         ui.success("Sensors disconnected.")

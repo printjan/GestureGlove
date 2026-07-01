@@ -66,7 +66,8 @@ CONFIG_DIR = BASE_DIRECTORY / "config"
 SCRIPTS_DIR = BASE_DIRECTORY / "scripts"
 DOCUMENTATION_DIR = BASE_DIRECTORY / "documentation"
 FIRMWARE_DIR = BASE_DIRECTORY / "firmware"
-DATA_DIR = BASE_DIRECTORY / "data"
+DATA_ROOT = BASE_DIRECTORY / "data"
+DATA_DIR = DATA_ROOT / "dataset_current"
 
 DEVICES_CONFIG_FILE = CONFIG_DIR / "devices.yml"
 POWERPOINT_CONTROL_CONFIG_FILE = CONFIG_DIR / "powerpoint_control.yml"
@@ -142,6 +143,11 @@ def get_model_run_dir(model_name: str, timestamp: str) -> Path:
     """
     model_dir = MODELS_DIR / model_name
     model_dir.mkdir(parents=True, exist_ok=True)
+
+    if timestamp.startswith("training_session_"):
+        run_dir = model_dir / timestamp
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return run_dir
 
     # If a training session folder with this exact timestamp already exists, reuse it
     for p in model_dir.glob(f"training_session_*_{timestamp}"):

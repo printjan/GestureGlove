@@ -99,33 +99,11 @@ graph TD
 ## Training Pipeline Integration & Usage
 
 The training pipeline integrates:
+
 1. **Bayesian Dynamic Feature Selection (Optuna):** Optimizes the feature subset to maximize performance (F1-score) while minimizing parameter counts and edge latency.
+  *   The script executes the number of trial iterations specified by `--optuna-trials` (e.g., 30 trials). In each trial, it samples different subsets of the 21 optional dynamic features, trains a trial candidate model for `--optuna-epochs` (e.g., 10 epochs), and computes the **Joint Utility Score**.
+  *   Once the search is complete, it extracts the optimal feature toggle layout and automatically triggers a **final retraining run** on those optimal features using the epoch budget specified by `--epochs`.
 2. **Dynamic Retrofitting:** Saves model checkpoints along with a serialized `model_metadata.json` containing the flat `"feature_toggles"` map.
-
-### Usage Commands:
-
-#### **Standard Baseline Training:**
-* Train the model on the default feature set:
-  ```bash
-  python scripts/train_test_cnn.py --model-name late_fusion_cnn_test
-  ```
-* If  `--epochs` is not specified, it will default to `10` epochs used for the final retraining (after the optional feature selection). To ensure the final selected model trains to full convergence and utilizes `EarlyStopping` / `ReduceLROnPlateau` successfully, we recomment to append at least `--epochs 50`:
-  ```bash
-  python scripts/train_test_cnn.py --epochs 50 --model-name late_fusion_cnn_test
-  ```
-
-#### **Dynamic Feature Sweep & Optimization:**
-* Run a Bayesian Optuna search sweep to discover the optimal feature layout using the `--optimize` flag:
-  ```bash
-  python scripts/train_test_cnn.py --optimize --optuna-trials 30 --optuna-epochs 10 --augment-rotation 15 --epochs 50 --model-name late_fusion_cnn_test
-  ```
-*   **WITHOUT `--optimize` (Baseline Mode):**
-   *   The script skips the optimization phase and immediately trains a single model for the number of epochs specified by `--epochs` (default: 10) using a static feature set containing all Mandatory and Optional features, without performing feature selection.
-*   **WITH `--optimize` (Bayesian Feature Selection Mode):**
-   *   The script launches a **Bayesian dynamic feature selection sweep** powered by Optuna.
-   *   It executes the number of trial iterations specified by `--optuna-trials` (e.g., 30 trials). In each trial, it samples different subsets of the 21 optional dynamic features, trains a trial candidate model for `--optuna-epochs` (e.g., 10 epochs), and computes the **Joint Utility Score**.
-   *   Once the search is complete, it extracts the optimal feature toggle layout and automatically triggers a **final retraining run** on those optimal features using the epoch budget specified by `--epochs`.
-
 
 ---
 
@@ -293,3 +271,231 @@ By running with `--optimize`, Optuna naturally favors smaller feature spaces and
 A smaller model has a lower capacity to memorize data:
 *   **Reduce Filters:** In [model.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py), reduce the Conv1D filters. Instead of the default `32 -> 64` configuration, scale down to `16 -> 32` or even a single Conv1D layer with `16` filters.
 *   **Reduce Dense Neurons:** Scale down the classification dense layer from `64` neurons to `32` or `16`.
+
+---
+
+## Data Splitting Strategies & Leakage Prevention
+
+To ensure honest and reliable model evaluation, the training pipeline implements three index-based splitting strategies in [splits.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/processing/splits.py):
+
+### Implemented Splits & Selection
+*   **Leave-Session-Out (`leave-session-out`):** Groups data by session ID (recording files). It splits whole sessions, holding out an entire recording file (e.g. 20% of sessions) for testing and using the remaining files for training. We think, that this is the most realistic evaluation because the model is tested on a brand-new recording session reflecting variations in hand mounting, user arm fatigue, and sensor drift.
+*   **Chronological Split (`chronological`):** For each gesture class, it splits the time series sequentially, placing the first part (e.g. 70%) in the training set and the last 20% in the test set, while the remaining 10% of data is used for validation. When training within a single session, consecutive sliding windows overlap heavily (sharing up to 90% of data points). A standard random split would leak overlapping points between train and test. Slicing chronologically isolates the test data to a separate time segment at the end of the recording.
+*   **Stratified Split (`stratified`):** Splits indices randomly while maintaining class balance ratios.
+
+### 2. How to Select Splits via CLI
+Select the split strategy using the `--split` flag:
+```bash
+# To use the recommended Leave-Session-Out split:
+python scripts/train_test_cnn.py --split leave-session-out --epochs 50
+
+# To use Chronological split:
+python scripts/train_test_cnn.py --split chronological --epochs 50
+```
+
+---
+
+
+## Usage
+
+### Training Pipeline:
+
+#### **Standard Baseline Training:**
+* Train the model on the default feature set:
+  ```bash
+  python scripts/train_test_cnn.py --model-name late_fusion_cnn_test
+  ```
+* If  `--epochs` is not specified, it will default to `10` epochs used for the final retraining (after the optional feature selection). To ensure the final selected model trains to full convergence and utilizes `EarlyStopping` / `ReduceLROnPlateau` successfully, we recomment to append at least `--epochs 50`:
+  ```bash
+  python scripts/train_test_cnn.py --epochs 50 --model-name late_fusion_cnn_test
+  ```
+
+#### **Dynamic Feature Sweep & Optimization:**
+* Run the Bayesian Optuna search sweep to discover the optimal feature layout using the `--optimize` flag:
+  ```bash
+  python scripts/train_test_cnn.py --optimize --optuna-trials 30 --optuna-epochs 10 --augment-rotation 15 --epochs 50 --model-name late_fusion_cnn_test
+  ```
+
+### Real-Time Inference System
+
+#### **Live Mode (Physical Rigs):**
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
+  ```
+
+#### **Simulated Dry-Run (No Hardware Needed):**
+  Useful for quick offline verification and pipeline logic checks:
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
+  ```
+
+---
+
+## Experiments
+
+We evaluated the performance of our multi-branch architecture across different dataset splitting strategies to isolate theire impact. All runs executed a complete Bayesian feature sweep (50 Optuna trials, 15 trials epochs, 25-degree rotation augmentation, 70 training epochs) under the following base command:
+
+```bash
+python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 15 --augment-rotation 25 --epochs 70 --model-name late_fusion_cnn_test --split <split-strategy>
+```
+
+
+### Empirical Split Comparison Summary
+
+| Experiment / Strategy | Split Type | Parameters / Augmentation | Test Accuracy | Macro F1-Score | Best Val Loss | Target Run Subdirectory |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **1. Stratified Split** | stratified | Default fractions | **99.06%** | **99.21%** | 0.0580 | [training_session_split_test_stratified](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_stratified/) |
+| **2. Chronological Split** | chronological | Default fractions | **96.25%** | **96.89%** | 0.0144 | [training_session_split_test_chronological](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_chronological/) |
+| **3. Leave-Session-Out** | leave-session-out | Default fractions | **48.00%** | **28.84%** | 2.7887 | [training_session_split_test_leave-session-out](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out/) |
+| **4. Expanded Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15` | **96.73%** | **97.26%** | 0.3162 | [training_session_expanded_chronological_split](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_expanded_chronological_split/) |
+| **5. Jitter-Augmented Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15 --jitter-range 25` | **96.03%** | **96.70%** | 0.3388 | [training_session_jitter_augmented_chronological_split](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_jitter_augmented_chronological_split/) |
+
+### Detailed Analysis of Findings
+
+#### **1. Stratified Split (Deceptive Leakage)**
+*   **Performance:** Test Accuracy: **99.06%** | Macro F1-Score: **99.21%** | Best Val Loss: **0.0580** (Epoch 25).
+*   **Leakage Mechanism:** Sequential sliding windows overlap heavily (sharing 75 contiguous data points for the `none` class, and continuous sensor characteristics for gestures). Assigning individual windows randomly to Train, Validation, and Test subsets places adjacent windows (e.g., window $i$ and $i+1$) in different sets.
+*   **Result:** The test set acts as a near-duplicate of the training set. The model memorizes high-frequency noise and session characteristics instead of generalized movement patterns.
+
+> **Why does Random Splitting cause Information Leakage?**
+> - The none class windows are sliced with $50%$ overlap (sharing 75 contiguous data points). For active gestures, consecutive trials or recordings in a single session represent continuous activity by the same user with identical sensor mounting, muscle dynamics, and environmental factors.
+> - Random/Stratified Split Leakage explained in detail:
+>   - If we split individual windows randomly into Train, Validation, and Test sets, two adjacent sliding windows from the same session (e.g. window $i$ and window $i+1$) will end up split between Train and Test.
+>   - Because they share the same physical mounting characteristics, identical muscle movements, and potentially overlapping data points (especially in continuous classes or highly similar sequential trials), the Test set becomes a near-duplicate copy of the Train set.
+>   - The model achieves a near-perfect score (99.06% F1-score) simply because it has memorized the characteristics of that specific recording session. It hasn't actually learned how to recognize gestures generally; it has just memorized the session's noise and user patterns.
+
+#### **2. Chronological Split (Temporal Isolation, Session Leakage)**
+*   **Performance:** Test Accuracy: **96.25%** | Macro F1-Score: **96.89%** | Best Val Loss: **0.0144** (Epoch 36).
+*   **Isolation Mechanism:** Splits the time series sequentially per gesture class (e.g., first 70% for train, next 10% for validation, last 20% for test). This prevents temporal overlap between adjacent windows.
+*   **Leakage Mechanism:** The test windows are drawn from the *same* session recordings. The model memorized the specific sensor mounting orientation, skin-sensor interface impedance, and hand characteristics of the session instead of properly generalizing gesture profiles.
+
+#### **3. Leave-Session-Out Split (Methodologically Flawed Setup)**
+*   **Performance:** Test Accuracy: **48.00%** | Macro F1-Score: **28.84%** | Best Val Loss: **2.7887** (Epoch 1).
+*   **Target Run Directory:** [training_session_split_test_leave-session-out](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out/)
+*   **Composition & Flaw Analysis:**
+    These experiments were run on the **third version of the dataset** (1600 samples, 20 unique session groups recorded by a single subject). Each physical recording session represents a single sensor mounting alignment. Crucially, each session only contains recordings of a *single gesture class* (with minor exceptions).
+    
+    When splits are determined on a session-wide basis (holding out 4 sessions for Test and 2 for Val), the small number of sessions per class (mostly 2) mathematically guarantees that entire classes are completely excluded from splits:
+
+```mermaid
+flowchart TD
+    Dataset["Dataset V3 (1600 samples, 20 unique sessions)"]
+    Dataset --> Train["Train Set (14 sessions, 1050 samples)"]
+    Dataset --> Val["Validation Set (2 sessions, 250 samples)"]
+    Dataset --> Test["Test Set (4 sessions, 300 samples)"]
+    
+    Train --> T_none["none: 375"]
+    Train --> T_swipe_l["swipe_left: 75"]
+    Train --> T_swipe_r["swipe_right: 150"]
+    Train --> T_circle_cw["circle_cw: 75"]
+    Train --> T_circle_ccw["circle_ccw: 150"]
+    Train --> T_fist["fist: 0"]
+    Train --> T_jerk_d["jerk_down: 75"]
+    Train --> T_jerk_u["jerk_up: 150"]
+    
+    Val --> V_none["none: 175"]
+    Val --> V_fist["fist: 75"]
+    Val --> V_others["others: 0"]
+    
+    Test --> Te_swipe_l["swipe_left: 75"]
+    Test --> Te_circle_cw["circle_cw: 75"]
+    Test --> Te_fist["fist: 75"]
+    Test --> Te_jerk_d["jerk_down: 75"]
+    Test --> Te_others["others: 0"]
+```
+
+* **Flaw Mechanism**:
+    1. **Zero-Train Class (`fist`)**: The model had zero training samples for `fist`, yet `fist` accounted for 25% of the test set (75 samples). Since it was OOD (Out-of-Distribution), the model predicted 100% of these samples as `none` (0% recall), dragging down the overall accuracy.
+    2. **Zero-Test Classes (`swipe_right`, `circle_ccw`, `jerk_up`, `none`)**: The model was trained on these classes, but they had zero representation in the test set. Their generalization performance was completely unmeasured.
+
+* **Interpretation of the Leave-Session-Out Performance**: To isolate the impact of class-exclusion from actual cross-session generalization, we compute performance metrics restricted **only** to the active classes represented in both the Train and Test splits (`swipe_left`, `circle_cw`, `jerk_down`):
+  * **Classwise Generalization Breakdown:**
+    * **`swipe_left` (84.0% correct):** 63 correct, 12 misclassified as `none` (idle). **0% confusion** with other active gestures.
+    * **`circle_cw` (62.7% correct):** 47 correct, 28 misclassified as `none` (idle). **0% confusion** with other active gestures.
+    * **`jerk_down` (45.3% correct):** 34 correct, 14 misclassified as `none`, 27 misclassified as `circle_ccw` (which also features downward movement dynamics).
+    * **`fist` (0% correct, untrained):** 100% (75/75) predicted as `none`. This confirms that out-of-distribution (OOD) classes safely fall back to the idle class without false-triggering other gestures.
+  * **Accuracy on Represented Classes:** **64.00%** (144 out of 225 samples).
+
+* **Generalization Judgment:**
+    * **Sensor Positioning Sensitivity:** The drop from 96%+ (chronological split) to 64% (restricted leave-session-out) is a clear indication of domain shift. Because the entire dataset was recorded by a single user, this performance gap is driven solely by **physical sensor mounting offsets** (rotational and translational displacement of the wrist armband and finger strap) between different recording sessions.
+    * **Structural Robustness:** While the model exhibits sensitivity to amplitude and offset shifts (resulting in false negatives/predictions of `none`), its structural generalization is actually quite robust: it **almost never confuses distinct active gestures** with each other across sessions (e.g. `swipe_left` is never predicted as `circle_cw` or `jerk_down`).
+    * **Remediation**: To make the model truly robust to sensor positioning, we need a dataset containing multiple distinct sessions per gesture class (at least 3 to support a valid 3-way split) and must utilize robust normalization, data augmentation (like 3D rotation), or real-time calibration updates.
+
+
+#### **4. Impact of Dataset Split Size (Training Session 17)**
+* **Command:** 
+    ```bash
+    python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 15 --augment-rotation 25 --epochs 70 --model-name late_fusion_cnn_test --split chronological --test-fraction 0.27 --val-fraction 0.15
+    ```
+* **Performance:** Test Accuracy: **96.73%** | Macro F1-Score: **97.26%** | Best Val Loss: **0.3162** (Epoch 12).
+* **Result:** Increasing the test held-out fraction to 27% and validation to 15% under a chronological split did not increase generalization. This confirms that test partition size is not the defining factor for high accuracy under chronological splits; session-specific leakage is the primary driver of performance.
+
+#### **5. Overfitting Mitigation with Temporal Jittering (Training Session 18)**
+* **Command:** 
+    ```bash
+    python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 15 --augment-rotation 25 --epochs 70 --model-name late_fusion_cnn_test --split chronological --test-fraction 0.27 --val-fraction 0.15 --jitter-range 25
+    ```
+* **Performance:** Test Accuracy: **96.03%** | Macro F1-Score: **96.70%** | Best Val Loss: **0.3388** (Epoch 8).
+* **Result:** Introducing a dynamic $\pm 25$ sample sliding window temporal jitter slightly smoothed the validation curves, but did not significantly degrade performance. Jitter in general is helpfull as it functions as an on-the-fly regularization technique to prevent the network from relying on absolute gesture alignments, but does not provide any improvement terms of generalization.
+
+
+### Model Capacity Scaling (Overfitting Mitigation Experiments)
+
+To force the model to generalize better and prevent overfitting on session-specific sensor characteristics, we evaluated variations of the Conv1D filters and classification dense units. All models were trained with random 3D rotations, temporal jitters, and a disjoint three-way chronological split:
+
+| Experiment / Network Size | Conv1D Filters | Dense Units | Train Acc / Loss | Test Acc / Loss | Generalization Gap (Acc / Loss) | Best Epoch | Target Run Subdirectory |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Baseline Model** | `[32, 64]` | `64` | 98.50% / 0.078 | 96.03% / 0.339 | +2.47% / +0.261 | 8 / 70 | [training_session_jitter_augmented_chronological_split](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_jitter_augmented_chronological_split/) |
+| **Experiment A** | `[16, 32]` | `64` | 99.15% / 0.071 | 95.56% / 0.306 | +3.59% / +0.235 | 13 / 70 | [training_session_size_test_conv16_32_dense64](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv16_32_dense64/) |
+| **Experiment B** | `[16]` | `64` | 98.08% / 0.105 | 96.26% / 0.238 | +1.82% / +0.134 | 15 / 70 | [training_session_size_test_conv16_dense64](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv16_dense64/) |
+| **Experiment C** | `[32, 64]` | `32` | 95.19% / 0.153 | 95.79% / 0.325 | -0.60% / +0.172 | 13 / 70 | [training_session_size_test_conv32_64_dense32](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv32_64_dense32/) |
+| **Experiment D** | `[32, 64]` | `16` | 89.85% / 0.252 | **97.43% / 0.071** | **-7.58% / -0.181** | **42 / 70** | [training_session_size_test_conv32_64_dense16](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv32_64_dense16/) |
+| **Experiment E (Compact)** | `[16]` | `16` | 89.42% / 0.290 | 96.26% / 0.218 | -6.84% / -0.072 | **42 / 70** | [training_session_size_test_conv16_dense16](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv16_dense16/) |
+
+#### Key Insights from Architecture Scaling (Overfitting Mitigation):
+1.  **Classifier Capacity Bottlenecking (Generalization Breakthrough):** 
+    * Reducing the classification dense units from 64 down to 16 (**Experiment D**) achieved our highest generalizability: **97.43% test accuracy** and **0.071 test loss** (Macro F1-score: **97.85%**).
+    * This setup produced a **negative generalization gap** (test accuracy is $7.58\%$ higher than training accuracy, and test loss is $0.181$ lower than training loss). Because training active dropout ($50\%$) and L2 regularization make learning harder, they suppress training performance. However, because the dense head's capacity is constrained to 16 units, the network cannot memorize high-frequency session noise. Once dropout is disabled at evaluation, we believe the model to generalize better while keeping the high accuracy score.
+2.  **Structural Regularization via Layer Simplification:**
+    * Reducing the Conv1D filters to a single layer with 16 filters (**Experiment B**) yielded a test accuracy of **96.26%** (Macro F1: **96.89%**), which outperforms the baseline model.
+    * By removing the secondary Conv1D layer and reducing filter count, the model is physically constrained from extracting overly complex, high-frequency signal shapes. This acts as a structural regularizer, forcing the branches to prioritize low-frequency movement characteristics rather than fine session-specific noise.
+3.  **Training Stability & Divergence Prevention:**
+    * In the **Baseline Model**, the early stopping callback terminated training at epoch 8 because the validation loss started to diverge (increase) rapidly due to overfitting.
+    * In the constrained architectures (**Experiment D** and **Experiment E**), training proceeded stably to **epoch 42** before stopping. The validation loss continued to decrease smoothly without divergence, indicating forther that restricting model capacity successfully prevents overfitting.
+
+---
+
+
+### Overfitting & Generalization Analysis (Single-User Dataset)
+
+Because the entire dataset was recorded by a **single subject**, the experimental results are highly sensitive to overfitting. However, for our project goal—a proof-of-concept demonstrating gesture recognition via simple IMU sensors taped onto a garden glove—a single-user dataset is entirely sufficient. Some degree of overfitting is acceptable, particularly given that we actively mitigated its impact by introducing mathematical variations (jitter, 3D rotations) during training and optimizing the model architecture to bottleneck memorization capacity. 
+
+Below, we mathematically prove this behavior, analyze its underlying causes, and discuss the architectural takeaways from our capacity scaling experiments.
+
+#### **1. Evidentiary Proof of Overfitting**
+We have three concrete proofs showing that our models overfit to session-specific characteristics:
+1. **Validation Loss Divergence**: In the high-capacity **Baseline Model**, the training loss continuously converges toward zero, but the validation loss begins to diverge (spiking rapidly) after **epoch 8**, triggering early stopping.
+2. **The Capacity-Generalization Gap**: Reducing the classification head's capacity from 64 to 16 units (**Experiment D**) dramatically dropped the validation loss from **0.339** to **0.071** and extended stable training from epoch 8 to **epoch 42**. This proves that the larger dense layer was memorizing non-generalizable features.
+3. **The Session-Shift Performance Drop**: When evaluating the baseline model on a cross-session split (restricted to classes present in both Train and Test), the accuracy drops from **96.03%** (Chronological Split) to **64.00%** (Leave-Session-Out). This $32.03\%$ drop represents the exact portion of accuracy driven by session-specific features.
+
+#### **2. Supposition on Why Our Models Overfit**
+We postulate that the primary driver of overfitting is **session-specific sensor signatures**:
+* **Physical Mounting Offsets**: When the user re-mounts the armband and finger strap between sessions, minor shifts in rotation and translation alter the coordinate baselines. 
+* **Skin-Sensor Impedance**: Variations in strap tightness and skin contact impedance affect signal amplitudes.
+* **Shortcut Learning**: Because the dataset was recorded by only one person, the network does not have to generalize across different arm shapes or movement styles. Instead of learning invariant kinematic trajectories, a high-capacity classifier (64 dense units) exploits "shortcuts"—it memorizes the specific baseline biases, constant offsets, and noise shapes unique to the sessions in the training set. When evaluated on a new session with shifted baselines, these memorized features fail.
+
+#### **3. Discussion of Capacity and Jitter Experiments (New Perspective)**
+The capacity scaling and jitter experiments conducted after the initial Leave-Session-Out test provide crucial insights into our model's learning behavior:
+
+* **What we learned about the overfitting problem**: 
+  Overfitting in IMU networks is not just temporal (relying on absolute gesture centering) but spatial (relying on specific sensor alignments). 
+* **What we learned about how to reduce overfitting**:
+  * **Temporal Jittering (Session 18)**: Slicing windows randomly shifted by $\pm 25$ samples acts as an on-the-fly regularizer. It prevents the network from expecting acceleration peaks in the exact center of the window, forcing temporal shift-invariance.
+  * **Structural Bottlenecking (Experiments B, D, E)**: Reducing the classification head to 16 units physically restricts the model's memory capacity. The bottleneck forces the model to ignore high-frequency noise and baseline biases, instead relying on low-frequency, spatial-temporal features extracted by the Conv1D encoders.
+* **Immediate Takeaways for Model Architecture (Single-Subject Data)**:
+  * We must enforce a **compact classification head** (16 dense units) and maintain 50% dropout.
+  * We must compile **shape-agnostic convolutional branches** that focus on relative dynamics (like finger-wrist differentials) rather than absolute magnitudes.
+* **Future Project Improvements**:
+  * **Multi-Session Data Collection**: Collect at least 4 to 5 sessions per class with deliberate armband re-positioning between runs to enable a valid 3-way Leave-Session-Out split.
+  * **Multi-Subject Data & LOSO Validation**: Transition the validation protocol to Leave-One-Subject-Out (LOSO) cross-validation. (Note: Collecting multi-subject data would have gone far beyond the scope and academic context of this project, but remains the ideal path for general commercialization).
+  * **Runtime Calibration (ZUPT)**: Implement Zero-Velocity Updates (ZUPT) at runtime to continuously re-align sensor biases, minimizing the domain shift before inputs enter the CNN.

@@ -21,7 +21,12 @@ from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from data_fusion_project.core.logger_setup import get_logger
-from data_fusion_project.processing import GestureDataset, leave_sessions_out, stratified_split, chronological_split
+from data_fusion_project.processing import (
+    GestureDataset,
+    leave_sessions_out_three_way,
+    stratified_split_three_way,
+    chronological_split_three_way
+)
 from data_fusion_project.training.late_fusion_multi_branch_cnn_test.model import build_multi_branch_cnn, parse_channel_indices
 from data_fusion_project.core.paths import (
     get_model_run_dir,
@@ -320,13 +325,16 @@ def train_model(
     ds: GestureDataset,
     split_type: str = "stratified",
     test_fraction: float = 0.2,
+    val_fraction: float = 0.1,
     epochs: int = 50,
     batch_size: int = 32,
     model_name: str = "late_fusion_cnn_test",
     timestamp: str | None = None,
     seed: int = 42,
     augment_rotation: float = 0.0,
-    feature_toggles: dict[str, bool] | None = None
+    feature_toggles: dict[str, bool] | None = None,
+    conv_filters: list[int] = [32, 64],
+    dense_units: int = 64
 ) -> tuple[keras.Model, dict, dict]:
     """
     Executes the training and evaluation loop.
@@ -356,24 +364,32 @@ def train_model(
     X_wrist = ds.X[:, :, wrist_idx] if wrist_idx else None
     X_finger = ds.X[:, :, finger_idx] if finger_idx else None
     
-    # 2. Train/Test indices split
+    # 2. Train/Val/Test indices split
     if split_type in ("leave_session_out", "leave-session-out"):
-        train_idx, test_idx = leave_sessions_out(ds.groups, test_fraction=test_fraction, seed=seed)
+        train_idx, val_idx, test_idx = leave_sessions_out_three_way(
+            ds.groups, test_fraction=test_fraction, val_fraction=val_fraction, seed=seed
+        )
     elif split_type == "chronological":
-        train_idx, test_idx = chronological_split(ds.y, test_fraction=test_fraction)
+        train_idx, val_idx, test_idx = chronological_split_three_way(
+            ds.y, test_fraction=test_fraction, val_fraction=val_fraction
+        )
     else:
-        train_idx, test_idx = stratified_split(ds.y, test_fraction=test_fraction, seed=seed)
+        train_idx, val_idx, test_idx = stratified_split_three_way(
+            ds.y, test_fraction=test_fraction, val_fraction=val_fraction, seed=seed
+        )
         
-    logger.info("Split result: %d training samples, %d testing samples.", len(train_idx), len(test_idx))
+    logger.info("Split result: %d training, %d validation, %d testing samples.", len(train_idx), len(val_idx), len(test_idx))
 
     # 3. Fitting scalers and scaling data
     train_inputs = []
+    val_inputs = []
     test_inputs = []
     
     # Wrist scaling
     scaler_wrist = None
     if X_wrist is not None:
         X_wrist_train = X_wrist[train_idx]
+        X_wrist_val = X_wrist[val_idx]
         X_wrist_test = X_wrist[test_idx]
         if augment_rotation > 0.0:
             wrist_ch_names = [ds.channel_names[i] for i in wrist_idx]
@@ -381,14 +397,17 @@ def train_model(
             logger.info("Applied random 3D rotation augmentation to Wrist training branch (max %d deg)", augment_rotation)
         scaler_wrist = TimeSeriesScaler()
         X_wrist_train_scaled = scaler_wrist.fit_transform(X_wrist_train)
+        X_wrist_val_scaled = scaler_wrist.transform(X_wrist_val)
         X_wrist_test_scaled = scaler_wrist.transform(X_wrist_test)
         train_inputs.append(X_wrist_train_scaled)
+        val_inputs.append(X_wrist_val_scaled)
         test_inputs.append(X_wrist_test_scaled)
         
     # Finger scaling
     scaler_finger = None
     if X_finger is not None:
         X_finger_train = X_finger[train_idx]
+        X_finger_val = X_finger[val_idx]
         X_finger_test = X_finger[test_idx]
         if augment_rotation > 0.0:
             finger_ch_names = [ds.channel_names[i] for i in finger_idx]
@@ -396,27 +415,35 @@ def train_model(
             logger.info("Applied random 3D rotation augmentation to Finger training branch (max %d deg)", augment_rotation)
         scaler_finger = TimeSeriesScaler()
         X_finger_train_scaled = scaler_finger.fit_transform(X_finger_train)
+        X_finger_val_scaled = scaler_finger.transform(X_finger_val)
         X_finger_test_scaled = scaler_finger.transform(X_finger_test)
         train_inputs.append(X_finger_train_scaled)
+        val_inputs.append(X_finger_val_scaled)
         test_inputs.append(X_finger_test_scaled)
         
     # Statistical features scaling
     scaler_feat = None
     features_train = None
+    features_val = None
     features_test = None
     if ds.features is not None and ds.features.size > 0:
         features_train = ds.features[train_idx]
+        features_val = ds.features[val_idx]
         features_test = ds.features[test_idx]
         scaler_feat = StandardScaler()
         features_train_scaled = scaler_feat.fit_transform(features_train)
+        features_val_scaled = scaler_feat.transform(features_val)
         features_test_scaled = scaler_feat.transform(features_test)
         train_inputs.append(features_train_scaled)
+        val_inputs.append(features_val_scaled)
         test_inputs.append(features_test_scaled)
         
     # Targets encoding
     y_train = ds.y[train_idx]
+    y_val = ds.y[val_idx]
     y_test = ds.y[test_idx]
     y_train_cat = to_categorical(y_train, num_classes=n_classes)
+    y_val_cat = to_categorical(y_val, num_classes=n_classes)
     y_test_cat = to_categorical(y_test, num_classes=n_classes)
     
     # 4. Model building & compilation
@@ -428,7 +455,9 @@ def train_model(
         input_shape_wrist=shape_wrist,
         input_shape_finger=shape_finger,
         num_classes=n_classes,
-        input_shape_feat=shape_feat
+        input_shape_feat=shape_feat,
+        conv_filters=conv_filters,
+        dense_units=dense_units
     )
     
     model.compile(
@@ -449,7 +478,7 @@ def train_model(
     history = model.fit(
         train_inputs,
         y_train_cat,
-        validation_data=(test_inputs, y_test_cat),
+        validation_data=(val_inputs, y_val_cat),
         epochs=epochs,
         batch_size=batch_size,
         callbacks=callbacks_list,
@@ -546,14 +575,18 @@ def train_model(
                 "learning_rate": 0.001,
                 "split_type": split_type,
                 "test_fraction": test_fraction,
+                "val_fraction": val_fraction,
                 "seed": seed,
                 "augment_rotation": augment_rotation,
                 "jitter_range": ds.config.jitter_range if ds.config else 0,
-                "sessions_used": [str(s) for s in sessions_used]
+                "sessions_used": [str(s) for s in sessions_used],
+                "conv_filters": conv_filters,
+                "dense_units": dense_units
             },
             "split_info": {
                 "strategy": split_type,
                 "train_sessions": sorted(list(set(ds.groups[train_idx].tolist()))),
+                "val_sessions": sorted(list(set(ds.groups[val_idx].tolist()))),
                 "test_sessions": sorted(list(set(ds.groups[test_idx].tolist())))
             },
             "performance": {
