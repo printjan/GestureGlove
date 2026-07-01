@@ -25,7 +25,7 @@ try:
     from data_fusion_project.core.paths import DATA_DIR
 except ImportError:
     # Fallback to resolving relative path if project package is not installed/discoverable
-    DATA_DIR = PROJECT_ROOT / "data"
+    DATA_DIR = PROJECT_ROOT / "data" / "dataset_current"
 
 
 # ======================================================================================================================
