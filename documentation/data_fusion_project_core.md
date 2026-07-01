@@ -1,4 +1,4 @@
-# Data Fusion Project Core Module `data_fusion_project`
+# IMU Gesture Glove Core Module `data_fusion_project`
 
 This document describes the installable Python package `data_fusion_project`, which provides centralized utility functions for path resolution, interactive CLI helpers, structured logging, and configuration loading.
 

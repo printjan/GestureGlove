@@ -10,7 +10,7 @@ This document outlines statistical methodologies to estimate gesture separabilit
 
 ## Data Quality Auditing and Estimating Gesture Separability
 
-Before training a CNN, we can estimate how well gestures will differentiate from one another and from `none` using statistical and information-theoretic metrics on the training data.
+Before training a CNN, we can estimate how well gestures will differentiate from one another and from `none` using statistical and information-theoretic metrics on the training data. For the interactive implementation and detailed visual results of this audit, refer to the [Data Quality Audit Notebook](../data_analysis/data_analysis_data_v2/data_quality_audit.ipynb).
 
 
 ### Distance Metrics & Silhouette Analysis on DTW
@@ -124,7 +124,7 @@ Once the dataset is audited, use the metrics to drive engineering choices:
 
 ### How to Analyze Feature Utility Quantitatively
 
-To avoid subjective overengineering, we can audit candidate features before settling on the final set:
+To avoid subjective overengineering, we can audit candidate features before settling on the final set. For the quantitative code implementation and evaluation of these methods, see the [Feature Filter Analysis Notebook](../data_analysis/data_analysis_data_v2/feature_filter_analysis.ipynb).
 
 1. **Mutual Information (MI) Regression/Classification:** Calculate the Mutual Information score between each candidate feature channel and the target gesture labels. Channels with MI $\to 0$ are candidates for exclusion.
 2. **Random Forest Gini Importance:** Flatten the windows and train a lightweight Random Forest. Review the feature importance weights to identify channels that do not contribute to splitting decision boundaries.
@@ -263,7 +263,7 @@ The raw accelerometer measures both physical acceleration and the static gravity
 
 ## Sensor Bias Calibration & Offset Correction
 
-To correct physical sensor defects and offsets, the pipeline runs a **static calibration correction stage** before any filtering or feature calculations:
+To correct physical sensor defects and offsets, the pipeline runs a **static calibration correction stage** before any filtering or feature calculations. For a thorough audit of calibration stability and zero-bias drift over time, see the [Calibration Quality Analysis Notebook](../data_analysis/data_analysis_data_v2/analyze_calibration_quality.ipynb).
 
 1. **Gyroscope Zero-Bias Subtraction:** Raw gyroscopes read small non-zero values even when held completely still. During static calibration (recorded for 5 seconds), the pipeline calculates the mean value ($\bar{\mathbf{g}}_{bias}$) for each axis. During subsequent dynamic recordings, this static offset is subtracted: $\mathbf{g}_{corrected} = \mathbf{g}_{raw} - \bar{\mathbf{g}}_{bias}$. This removes constant offsets, which is critical to preventing relative yaw integration from drifting.
 2. **Accelerometer Scale Normalization:** The gravity vector magnitude $g$ is estimated from the resting accelerometer values. The accelerometer channels are divided by this scale factor: $\mathbf{a}_{normalized} = \mathbf{a}_{raw} / g$, mapping 1 g of gravity to exactly 1.0 units.
@@ -293,7 +293,7 @@ It is critical that the calibration pipeline used during offline model training 
 
 ## Model Training Discussion: Alignment vs. Translation Jitter
 
-When designing the CNN training pipeline, we must investigate a core trade-off of our data recording solution:
+When designing the CNN training pipeline, we must investigate a core trade-off of our data recording solution. For statistical audits of sample rates, sample lengths, and boundary recording quality, see the [Recording Quality Analysis Notebook](../data_analysis/data_analysis_data_v2/analyze_recording_quality.ipynb).
 
 
 ### The Hypothesis
@@ -405,14 +405,14 @@ In wearable Human Activity Recognition (HAR) and multi-sensor fusion literature 
 
 We will implement and empirically compare three distinct architectures to determine the best balance between classification accuracy, memory footprint, and real-time execution speed:
 
-#### 1. Early Fusion Single-Branch Conv1D CNN (see [early_fusion_single_branch_1d_cnn.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/early_fusion_single_branch_1d_cnn.md))
+#### 1. Early Fusion Single-Branch Conv1D CNN (see [early_fusion_single_branch_1d_cnn.md](model_architectures/early_fusion_single_branch_1d_cnn.md))
 * **Structure:** Stacks all input channels into a single tensor of shape `(150, C)` (where `C` is the optimized 18-channel feature set rather than the raw 28 coordinate channels) and feeds it to a single Conv1D pipeline.
 * **Pros:** Minimum parameter count, easiest to implement and run.
 * **Cons:** Prone to noise propagation; filters cannot optimize independently for finger vs. wrist coordinates.
 * **Features:** Auditing has shown that using the **18 optimized orientation-invariant features** (excluding raw coordinate baselines) improves generalization accuracy on unseen sessions by preventing session-to-session baseline shifts.
 * **Filters:** Jerk derivatives are lowpass-filtered (8 Hz), and relative yaw is integrated on 0.5 Hz highpass-filtered gyroscopes to prevent linear integration drift.
 
-#### 2. Late Fusion Multi-Branch Conv1D CNN (see [late_fusion_multi_branch_1d_cnn.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/late_fusion_multi_branch_1d_cnn.md))
+#### 2. Late Fusion Multi-Branch Conv1D CNN (see [late_fusion_multi_branch_1d_cnn.md](model_architectures/late_fusion_multi_branch_1d_cnn.md))
 * **Structure:** Parallel Conv1D encoders for the wrist channels and finger channels, and a separate Dense MLP for statistical summary features, concatenated late before classification layers.
 * **Pros:** Highly accurate; prevents spatial feature dilution; structurally matches the physical setup.
 * **Cons:** Slightly larger parameter footprint.
@@ -420,7 +420,7 @@ We will implement and empirically compare three distinct architectures to determ
   * Based on our Random Forest Gini importance audit, wrist-finger differences carry over **30%** of decision boundary splitting weight. We route wrist-only dynamics to Branch 1, finger-relative differences to Branch 2, and short-term relative yaw to the MLP branch.
 * **Filters:** All inputs are pre-filtered to remove noise prior to differential subtraction and integration to prevent noise propagation.
 
-#### 3. Lightweight Temporal Transformer (Self-Attention) (see [slef_attention_temporal_transformer.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/slef_attention_temporal_transformer.md))
+#### 3. Lightweight Temporal Transformer (Self-Attention) (see [self_attention_temporal_transformer.md](model_architectures/self_attention_temporal_transformer.md))
 * **Structure:** Multi-head self-attention layers applied along the time dimension to capture long-range temporal dependencies.
 * **Pros:** State-of-the-art capability for sequence classification.
 * **Cons:** Extremely data-hungry; prone to severe overfitting on small datasets.

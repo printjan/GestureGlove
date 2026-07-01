@@ -1,6 +1,6 @@
 # Implementation Plan: Self-Attention Temporal Transformer
 
-This document details the architectural design, layer specifications, preprocessing pipelines, mathematical formulations, and engineering justifications for the **Self-Attention Temporal Transformer** gesture classification candidate. It incorporates all empirical insights gained from our playground experiments (`late_fusion_cnn_test`) documented in [late_fusion_multi_branch_1d_cnn_test_model.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/model_architectures/late_fusion_multi_branch_1d_cnn_test_model.md).
+This document details the architectural design, layer specifications, preprocessing pipelines, mathematical formulations, and engineering justifications for the **Self-Attention Temporal Transformer** gesture classification candidate. It incorporates all empirical insights gained from our playground experiments (`late_fusion_cnn_test`) documented in [playground_model_experiments.md](playground_model_experiments.md).
 
 ---
 
@@ -182,9 +182,9 @@ models/
         └── learning_curves.png                      # Training/validation loss and accuracy curves
 ```
 
-* **Sequential Indexing**: The training script must dynamically query existing directories under `models/slef_attention_temporal_transformer/` to determine the next available sequential integer `<index>` (starting at `0` for the first run). Alternatively, an optional custom naming scheme (`training_session_<name>`) can be used as defined in [README.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/README.md).
+* **Sequential Indexing**: The training script must dynamically query existing directories under `models/slef_attention_temporal_transformer/` to determine the next available sequential integer `<index>` (starting at `0` for the first run). Alternatively, an optional custom naming scheme (`training_session_<name>`) can be used as defined in [model_training_pipeline.md](../model_training_pipeline.md).
 * **Single Scaler Serializer**: Because this is a single-branch architecture, all active features are normalized together. A single `StandardScaler` instance must be fit on the training features and saved to `scaler_x.joblib`.
-* **Metadata Logging**: The `model_metadata.json` file must strictly comply with the schema specified in [README.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/README.md#model-metadata-properties-structure-model_metadatajson). Since this is a single-branch architecture, the `wrist_channels` and `finger_channels` fields must be set to empty lists `[]`. Developers must add Transformer-specific configurations (such as `num_heads = 4`, `d_model = 64`, `attention_dropout = 0.1`, and stacked transformer blocks) inside the `model_structure` or `training_parameters` sections of the metadata JSON to ensure full run auditability.
+* **Metadata Logging**: The `model_metadata.json` file must strictly comply with the schema specified in [model_training_pipeline.md](../model_training_pipeline.md#metadata-schema-model_metadatajson). Since this is a single-branch architecture, the `wrist_channels` and `finger_channels` fields must be set to empty lists `[]`. Developers must add Transformer-specific configurations (such as `num_heads = 4`, `d_model = 64`, `attention_dropout = 0.1`, and stacked transformer blocks) inside the `model_structure` or `training_parameters` sections of the metadata JSON to ensure full run auditability.
 
 ---
 
