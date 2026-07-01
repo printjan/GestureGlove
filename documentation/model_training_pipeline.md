@@ -528,7 +528,18 @@ The following commands represent the **optimal training configurations** derived
 - **70 epochs** (compact models need ≥50 to converge)
 - **25° rotation augmentation** (IMU strap mounting angle invariance)
 - **±20 sample jitter** (bridges zero-phase ↔ causal filter group delay)
-- **Full feature engineering** (diff channels, jerk, angular acceleration, magnitudes, yaw)
+- **Optuna TPE feature optimization** (50 trials, 15 epochs/trial) to select the optimal feature subset
+
+> [!IMPORTANT]
+> **When `--optimize` is enabled, the pipeline automatically loads the full feature pool** (all 37 candidate channels including diff, jerk, angular acceleration, magnitudes, yaw, etc.) regardless of individual feature flags like `--diff` or `--linear-jerk`. The Optuna search space then categorizes these into three tiers:
+>
+> | Category | Count | Selection | Rationale |
+> |:---|:---|:---|:---|
+> | **Pruned** | 6 | Always `False` (never used) | RF Gini < 0.002 AND MI < 0.50 |
+> | **Mandatory** | 11 | Always `True` (always kept) | MI > 0.90 AND RF > 0.02 |
+> | **Dynamic** | 21 | Optimized by Optuna TPE | Remaining features — each is a binary trial parameter |
+>
+> After all trials complete, the best feature combination is used for a **final full-epoch retraining** with artifact saving. Individual feature flags (`--diff`, `--linear-jerk`, etc.) are only relevant when training **without** `--optimize`.
 
 ### Early Fusion CNN — Standard
 
@@ -540,12 +551,9 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
-    --diff \
-    --linear-jerk \
-    --angular-acceleration \
-    --relative-yaw \
-    --acc-magnitude \
-    --gyro-magnitude
+    --optimize \
+    --optuna-trials 50 \
+    --optuna-epochs 15
 ```
 
 ### Early Fusion CNN — Compact
@@ -558,38 +566,12 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
-    --diff \
-    --linear-jerk \
-    --angular-acceleration \
-    --relative-yaw \
-    --acc-magnitude \
-    --gyro-magnitude
-```
-
-### Late Fusion CNN — Standard (with Optuna Feature Optimization)
-
-```bash
-python scripts/train.py \
-    --model-type late_fusion_cnn \
-    --config standard \
-    --split leave-session-out \
-    --epochs 70 \
-    --augment-rotation 25 \
-    --jitter-range 20 \
-    --diff \
-    --linear-jerk \
-    --angular-acceleration \
-    --relative-yaw \
-    --acc-magnitude \
-    --gyro-magnitude \
-    --cross-correlation \
-    --statistics \
     --optimize \
     --optuna-trials 50 \
     --optuna-epochs 15
 ```
 
-### Late Fusion CNN — Standard (without Optuna)
+### Late Fusion CNN — Standard
 
 ```bash
 python scripts/train.py \
@@ -599,14 +581,24 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
-    --diff \
-    --linear-jerk \
-    --angular-acceleration \
-    --relative-yaw \
-    --acc-magnitude \
-    --gyro-magnitude \
-    --cross-correlation \
-    --statistics
+    --optimize \
+    --optuna-trials 50 \
+    --optuna-epochs 15
+```
+
+### Late Fusion CNN — Compact
+
+```bash
+python scripts/train.py \
+    --model-type late_fusion_cnn \
+    --config compact \
+    --split leave-session-out \
+    --epochs 70 \
+    --augment-rotation 25 \
+    --jitter-range 20 \
+    --optimize \
+    --optuna-trials 50 \
+    --optuna-epochs 15
 ```
 
 ### Temporal Transformer — Standard
@@ -619,12 +611,9 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
-    --diff \
-    --linear-jerk \
-    --angular-acceleration \
-    --relative-yaw \
-    --acc-magnitude \
-    --gyro-magnitude
+    --optimize \
+    --optuna-trials 50 \
+    --optuna-epochs 15
 ```
 
 ### Temporal Transformer — Compact
@@ -637,50 +626,58 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
-    --diff \
-    --linear-jerk \
-    --angular-acceleration \
-    --relative-yaw \
-    --acc-magnitude \
-    --gyro-magnitude
+    --optimize \
+    --optuna-trials 50 \
+    --optuna-epochs 15
 ```
 
-### Full Comparative Run (all three architectures, Optuna-optimized)
+### Full Comparative Run (all six configurations)
 
-Run all three sequentially for a direct architecture comparison:
+Run all architectures × presets sequentially for a direct comparison:
 
 ```bash
-# 1. Early Fusion CNN
+# 1. Early Fusion CNN — Standard
 python scripts/train.py \
     --model-type early_fusion_cnn --config standard \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
-    --diff --linear-jerk --angular-acceleration \
-    --relative-yaw --acc-magnitude --gyro-magnitude \
-    --optimize --optuna-trials 50
+    --optimize --optuna-trials 50 --optuna-epochs 15
 
-# 2. Late Fusion CNN
+# 2. Early Fusion CNN — Compact
+python scripts/train.py \
+    --model-type early_fusion_cnn --config compact \
+    --split leave-session-out --epochs 70 \
+    --augment-rotation 25 --jitter-range 20 \
+    --optimize --optuna-trials 50 --optuna-epochs 15
+
+# 3. Late Fusion CNN — Standard
 python scripts/train.py \
     --model-type late_fusion_cnn --config standard \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
-    --diff --linear-jerk --angular-acceleration \
-    --relative-yaw --acc-magnitude --gyro-magnitude \
-    --cross-correlation --statistics \
-    --optimize --optuna-trials 50
+    --optimize --optuna-trials 50 --optuna-epochs 15
 
-# 3. Temporal Transformer
+# 4. Late Fusion CNN — Compact
+python scripts/train.py \
+    --model-type late_fusion_cnn --config compact \
+    --split leave-session-out --epochs 70 \
+    --augment-rotation 25 --jitter-range 20 \
+    --optimize --optuna-trials 50 --optuna-epochs 15
+
+# 5. Temporal Transformer — Standard
 python scripts/train.py \
     --model-type temporal_transformer --config standard \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
-    --diff --linear-jerk --angular-acceleration \
-    --relative-yaw --acc-magnitude --gyro-magnitude \
-    --optimize --optuna-trials 50
-```
+    --optimize --optuna-trials 50 --optuna-epochs 15
 
-> [!NOTE]
-> The late fusion commands include `--cross-correlation` and `--statistics` because its MLP branch always routes scalar features. The early fusion and transformer architectures only use the time-series tensor, so scalar feature flags have no effect on them.
+# 6. Temporal Transformer — Compact
+python scripts/train.py \
+    --model-type temporal_transformer --config compact \
+    --split leave-session-out --epochs 70 \
+    --augment-rotation 25 --jitter-range 20 \
+    --optimize --optuna-trials 50 --optuna-epochs 15
+```
 
 ---
 
