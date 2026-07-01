@@ -1,0 +1,323 @@
+{
+  "timestamp": "training_session_split_test_chronological",
+  "model_name": "late_fusion_cnn_test",
+  "training_duration_s": 41.432644844055176,
+  "epochs_trained": 56,
+  "classes": [
+    "none",
+    "swipe_left",
+    "swipe_right",
+    "circle_cw",
+    "circle_ccw",
+    "fist",
+    "jerk_down",
+    "jerk_up"
+  ],
+  "channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag",
+    "IMU1_accY",
+    "IMU1_gyrY",
+    "IMU1_acc_mag",
+    "IMU1_relative_yaw",
+    "IMU2_acc_mag",
+    "IMU2_relative_yaw",
+    "IMU2_linear_jerkX",
+    "IMU2_angular_accelerationZ",
+    "diff_accY",
+    "diff_gyrX"
+  ],
+  "wrist_channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU1_gyr_mag",
+    "IMU1_accY",
+    "IMU1_gyrY",
+    "IMU1_acc_mag",
+    "IMU1_relative_yaw"
+  ],
+  "finger_channels": [
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
+    "IMU2_acc_mag",
+    "IMU2_relative_yaw",
+    "IMU2_linear_jerkX",
+    "IMU2_angular_accelerationZ",
+    "diff_accY",
+    "diff_gyrX"
+  ],
+  "feature_names": [],
+  "feature_toggles": {
+    "IMU1_linear_jerkX": false,
+    "IMU1_linear_jerkZ": false,
+    "IMU2_linear_jerkZ": false,
+    "IMU1_angular_accelerationY": false,
+    "IMU1_angular_accelerationZ": false,
+    "IMU2_angular_accelerationY": false,
+    "IMU1_accX": true,
+    "IMU1_accZ": true,
+    "IMU1_gyrX": true,
+    "IMU1_pitch": true,
+    "IMU2_accX": true,
+    "IMU2_accY": true,
+    "IMU2_accZ": true,
+    "IMU2_gyrX": true,
+    "diff_accX": true,
+    "diff_accZ": true,
+    "IMU1_gyr_mag": true,
+    "IMU1_accY": true,
+    "IMU1_gyrY": true,
+    "IMU1_gyrZ": false,
+    "IMU1_acc_mag": true,
+    "IMU1_roll": false,
+    "IMU1_relative_yaw": true,
+    "IMU1_linear_jerkY": false,
+    "IMU1_angular_accelerationX": false,
+    "IMU2_gyrY": false,
+    "IMU2_gyrZ": false,
+    "IMU2_gyr_mag": false,
+    "IMU2_acc_mag": true,
+    "IMU2_relative_yaw": true,
+    "IMU2_linear_jerkX": true,
+    "IMU2_linear_jerkY": false,
+    "IMU2_angular_accelerationX": false,
+    "IMU2_angular_accelerationZ": true,
+    "diff_accY": true,
+    "diff_gyrX": true,
+    "diff_gyrY": false,
+    "diff_gyrZ": false
+  },
+  "machine_info": {
+    "hostname": "MacBook-Pro.fritz.box",
+    "os": "Darwin-25.5.0",
+    "cpu": "arm",
+    "gpu": "MPS",
+    "ram_gb": 64.0
+  },
+  "training_parameters": {
+    "epochs": 70,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "split_type": "chronological",
+    "test_fraction": 0.2,
+    "val_fraction": 0.1,
+    "seed": 42,
+    "augment_rotation": 25.0,
+    "jitter_range": 0,
+    "sessions_used": [
+      "#",
+      "session_1782600797",
+      "session_1782663416",
+      "session_1782663628",
+      "session_1782676777",
+      "session_1782679027",
+      "session_1782751360",
+      "session_1782751666",
+      "session_1782829539",
+      "session_1782829902",
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831291",
+      "session_1782831658",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444",
+      "session_1782846877"
+    ]
+  },
+  "split_info": {
+    "strategy": "chronological",
+    "train_sessions": [
+      "#",
+      "session_1782600797",
+      "session_1782663416",
+      "session_1782663628",
+      "session_1782676777",
+      "session_1782679027",
+      "session_1782751360",
+      "session_1782751666",
+      "session_1782829539",
+      "session_1782829902",
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831291",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444"
+    ],
+    "val_sessions": [
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831291",
+      "session_1782831658",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444"
+    ],
+    "test_sessions": [
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831658",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444",
+      "session_1782846877"
+    ]
+  },
+  "performance": {
+    "best_epoch": 36,
+    "train_accuracy": 0.9973214268684387,
+    "train_loss": 0.020334219560027122,
+    "val_accuracy": 1.0,
+    "val_loss": 0.014378808438777924,
+    "val_f1_score": 0.9689098841291794
+  },
+  "evaluation": {
+    "accuracy": 0.9625,
+    "macro_avg": {
+      "precision": 0.9542732232189064,
+      "recall": 0.9863636363636363,
+      "f1-score": 0.9689098841291794,
+      "support": 320.0
+    },
+    "weighted_avg": {
+      "precision": 0.9657049174141796,
+      "recall": 0.9625,
+      "f1-score": 0.9622593361738077,
+      "support": 320.0
+    },
+    "per_class_metrics": {
+      "none": {
+        "precision": 1.0,
+        "recall": 0.8909090909090909,
+        "f1-score": 0.9423076923076923,
+        "support": 110.0
+      },
+      "swipe_left": {
+        "precision": 0.9090909090909091,
+        "recall": 1.0,
+        "f1-score": 0.9523809523809523,
+        "support": 30.0
+      },
+      "swipe_right": {
+        "precision": 0.9375,
+        "recall": 1.0,
+        "f1-score": 0.967741935483871,
+        "support": 30.0
+      },
+      "circle_cw": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 30.0
+      },
+      "circle_ccw": {
+        "precision": 0.9375,
+        "recall": 1.0,
+        "f1-score": 0.967741935483871,
+        "support": 30.0
+      },
+      "fist": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 30.0
+      },
+      "jerk_down": {
+        "precision": 0.967741935483871,
+        "recall": 1.0,
+        "f1-score": 0.9836065573770492,
+        "support": 30.0
+      },
+      "jerk_up": {
+        "precision": 0.8823529411764706,
+        "recall": 1.0,
+        "f1-score": 0.9375,
+        "support": 30.0
+      }
+    }
+  },
+  "pipeline_config": {
+    "sample_rate_hz": 100.0,
+    "window_size": 150,
+    "pad_mode": "edge",
+    "jitter_range": 0,
+    "calibration": {
+      "enabled": true,
+      "remove_gyro_bias": true,
+      "normalize_acc_to_g": true,
+      "remove_acc_bias": false,
+      "anchor_samples": 0
+    },
+    "filters": {
+      "enabled": true,
+      "acc_filter": "lowpass",
+      "acc_cutoff_hz": 8.0,
+      "gyro_filter": "lowpass",
+      "gyro_cutoff_hz": 12.0,
+      "order": 2,
+      "remove_gravity": false,
+      "gravity_cutoff_hz": 0.5,
+      "replace_acc_with_linear": false
+    },
+    "orientation": {
+      "enabled": true,
+      "method": "complementary",
+      "imus": [
+        "IMU1",
+        "IMU2"
+      ],
+      "alpha": 0.98,
+      "degrees": true,
+      "kalman_q_angle": 0.001,
+      "kalman_q_bias": 0.003,
+      "kalman_r_measure": 0.03
+    },
+    "features": {
+      "imus": [
+        "IMU1",
+        "IMU2"
+      ],
+      "include_acc": true,
+      "include_gyro": true,
+      "include_acc_magnitude": true,
+      "include_gyro_magnitude": true,
+      "include_diff_acc": true,
+      "include_diff_gyro": true,
+      "include_orientation": true,
+      "cross_correlation": false,
+      "statistics": false,
+      "include_linear_jerk": true,
+      "include_angular_acceleration": true,
+      "include_relative_acceleration": false,
+      "include_relative_rotation": false,
+      "include_relative_yaw": true,
+      "include_accelerometer_magnitude": false,
+      "include_gyroscope_magnitude": false,
+      "include_gravity_free_linear_acceleration": true
+    }
+  }
+}

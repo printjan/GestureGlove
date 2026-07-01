@@ -293,3 +293,122 @@ By running with `--optimize`, Optuna naturally favors smaller feature spaces and
 A smaller model has a lower capacity to memorize data:
 *   **Reduce Filters:** In [model.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py), reduce the Conv1D filters. Instead of the default `32 -> 64` configuration, scale down to `16 -> 32` or even a single Conv1D layer with `16` filters.
 *   **Reduce Dense Neurons:** Scale down the classification dense layer from `64` neurons to `32` or `16`.
+
+---
+
+## Data Splitting Strategies & Leakage Prevention
+
+To ensure honest and reliable model evaluation, the training pipeline implements three index-based splitting strategies in [splits.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/processing/splits.py):
+
+### Implemented Splits & Selection
+*   **Leave-Session-Out (`leave-session-out`):** Groups data by session ID (recording files). It splits whole sessions, holding out an entire recording file (e.g. 20% of sessions) for testing and using the remaining files for training. We think, that this is the most realistic evaluation because the model is tested on a brand-new recording session reflecting variations in hand mounting, user arm fatigue, and sensor drift.
+*   **Chronological Split (`chronological`):** For each gesture class, it splits the time series sequentially, placing the first part (e.g. 70%) in the training set and the last 20% in the test set, while the remaining 10% of data is used for validation. When training within a single session, consecutive sliding windows overlap heavily (sharing up to 90% of data points). A standard random split would leak overlapping points between train and test. Slicing chronologically isolates the test data to a separate time segment at the end of the recording.
+*   **Stratified Split (`stratified`):** Splits indices randomly while maintaining class balance ratios.
+
+### 2. How to Select Splits via CLI
+Select the split strategy using the `--split` flag:
+```bash
+# To use the recommended Leave-Session-Out split:
+python scripts/train_test_cnn.py --split leave-session-out --epochs 50
+
+# To use Chronological split:
+python scripts/train_test_cnn.py --split chronological --epochs 50
+```
+
+---
+
+
+## Usage
+
+### Training Pipeline:
+
+#### **Standard Baseline Training:**
+* Train the model on the default feature set:
+  ```bash
+  python scripts/train_test_cnn.py --model-name late_fusion_cnn_test
+  ```
+* If  `--epochs` is not specified, it will default to `10` epochs used for the final retraining (after the optional feature selection). To ensure the final selected model trains to full convergence and utilizes `EarlyStopping` / `ReduceLROnPlateau` successfully, we recomment to append at least `--epochs 50`:
+  ```bash
+  python scripts/train_test_cnn.py --epochs 50 --model-name late_fusion_cnn_test
+  ```
+
+#### **Dynamic Feature Sweep & Optimization:**
+* Run the Bayesian Optuna search sweep to discover the optimal feature layout using the `--optimize` flag:
+  ```bash
+  python scripts/train_test_cnn.py --optimize --optuna-trials 30 --optuna-epochs 10 --augment-rotation 15 --epochs 50 --model-name late_fusion_cnn_test
+  ```
+
+### Real-Time Inference System
+
+#### **Live Mode (Physical Rigs):**
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
+  ```
+
+#### **Simulated Dry-Run (No Hardware Needed):**
+  Useful for quick offline verification and pipeline logic checks:
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
+  ```
+
+---
+
+## Experiments
+
+We evaluated the performance of our multi-branch architecture across different dataset splitting strategies to isolate theire impact. All runs executed a complete Bayesian feature sweep (50 Optuna trials, 15 trials epochs, 25-degree rotation augmentation, 70 training epochs) under the following base command:
+
+```bash
+python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 15 --augment-rotation 25 --epochs 70 --model-name late_fusion_cnn_test --split <split-strategy>
+```
+
+### Empirical Split Comparison Summary
+
+| Experiment / Strategy | Split Type | Parameters / Augmentation | Test Accuracy | Macro F1-Score | Best Val Loss | Target Run Subdirectory |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **1. Stratified Split** | stratified | Default fractions | **99.06%** | **99.21%** | 0.0580 | [training_session_split_test_stratified](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_stratified/) |
+| **2. Chronological Split** | chronological | Default fractions | **96.25%** | **96.89%** | 0.0144 | [training_session_split_test_chronological](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_chronological/) |
+| **3. Leave-Session-Out** | leave-session-out | Default fractions | **48.00%** | **28.84%** | 2.7887 | [training_session_split_test_leave-session-out](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out/) |
+| **4. Expanded Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15` | **96.73%** | **97.26%** | 0.3162 | [training_session_17_20260701_104007](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_17_20260701_104007/) |
+| **5. Jitter-Augmented Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15 --jitter-range 25` | **96.03%** | **96.70%** | 0.3388 | [training_session_18_20260701_105542](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_18_20260701_105542/) |
+
+---
+
+### Detailed Analysis of Findings
+
+#### **1. Stratified Split (Deceptive Leakage)**
+*   **Performance:** Test Accuracy: **99.06%** | Macro F1-Score: **99.21%** | Best Val Loss: **0.0580** (Epoch 25).
+*   **Leakage Mechanism:** Sequential sliding windows overlap heavily (sharing 75 contiguous data points for the `none` class, and continuous sensor characteristics for gestures). Assigning individual windows randomly to Train, Validation, and Test subsets places adjacent windows (e.g., window $i$ and $i+1$) in different sets.
+*   **Result:** The test set acts as a near-duplicate of the training set. The model memorizes high-frequency noise and session characteristics instead of generalized movement patterns.
+
+> **Why does Random Splitting cause Information Leakage?**
+> - The none class windows are sliced with $50%$ overlap (sharing 75 contiguous data points). For active gestures, consecutive trials or recordings in a single session represent continuous activity by the same user with identical sensor mounting, muscle dynamics, and environmental factors.
+> - Random/Stratified Split Leakage explained in detail:
+>   - If we split individual windows randomly into Train, Validation, and Test sets, two adjacent sliding windows from the same session (e.g. window $i$ and window $i+1$) will end up split between Train and Test.
+>   - Because they share the same physical mounting characteristics, identical muscle movements, and potentially overlapping data points (especially in continuous classes or highly similar sequential trials), the Test set becomes a near-duplicate copy of the Train set.
+>   - The model achieves a near-perfect score (99.06% F1-score) simply because it has memorized the characteristics of that specific recording session. It hasn't actually learned how to recognize gestures generally; it has just memorized the session's noise and user patterns.
+
+#### **2. Chronological Split (Temporal Isolation, Session Leakage)**
+*   **Performance:** Test Accuracy: **96.25%** | Macro F1-Score: **96.89%** | Best Val Loss: **0.0144** (Epoch 36).
+*   **Isolation Mechanism:** Splits the time series sequentially per gesture class (e.g., first 70% for train, next 10% for validation, last 20% for test). This prevents temporal overlap between adjacent windows.
+*   **Leakage Mechanism:** The test windows are drawn from the *same* session recordings. The model memorized the specific sensor mounting orientation, skin-sensor interface impedance, and hand characteristics of the session instead of properly generalizing gesture profiles.
+
+#### **3. Leave-Session-Out Split (True Generalization Check)**
+*   **Performance:** Test Accuracy: **48.00%** | Macro F1-Score: **28.84%** | Best Val Loss: **2.7887** (Epoch 1).
+*   **Generalization Mechanism:** Isolates whole session recording files exclusively into train, validation, and test subsets. The test set contains zero data points or session traits from any recording seen during training.
+*   **Result:** The significant drop in performance (F1-score drops to 28.84%) reveals the model's inability to generalize to unseen sessions. This highlights that Leave-Session-Out is the only honest way to evaluate the model's readiness for real-world deployment.
+
+#### **4. Impact of Dataset Split Size (Training Session 17)**
+*   **Command:** 
+    ```bash
+    python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 15 --augment-rotation 25 --epochs 70 --model-name late_fusion_cnn_test --split chronological --test-fraction 0.27 --val-fraction 0.15
+    ```
+*   **Performance:** Test Accuracy: **96.73%** | Macro F1-Score: **97.26%** | Best Val Loss: **0.3162** (Epoch 12).
+*   **Result:** Increasing the test held-out fraction to 27% and validation to 15% under a chronological split did not decrease accuracy. This confirms that test partition size is not the defining factor for high accuracy under chronological splits; session-specific leakage is the primary driver of performance.
+
+#### **5. Overfitting Mitigation with Temporal Jittering (Training Session 18)**
+*   **Command:** 
+    ```bash
+    python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 15 --augment-rotation 25 --epochs 70 --model-name late_fusion_cnn_test --split chronological --test-fraction 0.27 --val-fraction 0.15 --jitter-range 25
+    ```
+*   **Performance:** Test Accuracy: **96.03%** | Macro F1-Score: **96.70%** | Best Val Loss: **0.3388** (Epoch 8).
+*   **Result:** Introducing a dynamic $\pm 25$ sample sliding window temporal jitter slightly smoothed the validation curves, but did not significantly degrade performance. Jitter functions as an on-the-fly regularization technique to prevent the network from relying on absolute gesture alignments.

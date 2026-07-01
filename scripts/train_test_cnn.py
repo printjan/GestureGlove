@@ -108,7 +108,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=32, help="Batch size.")
     p.add_argument("--split", default="chronological", choices=["stratified", "leave-session-out", "chronological"],
                    help="Evaluation splitting strategy (leave-session-out, stratified, or chronological).")
-    p.add_argument("--test-fraction", type=float, default=0.2, help="Validation held-out fraction (default: 0.2).")
+    p.add_argument("--test-fraction", type=float, default=0.2, help="Test held-out fraction (default: 0.2).")
+    p.add_argument("--val-fraction", type=float, default=0.1, help="Validation held-out fraction (default: 0.1).")
+    p.add_argument("--run-name", default=None,
+                   help="Optional custom name for the training session folder (must start with 'training_session_').")
     p.add_argument("--seed", type=int, default=42, help="Random split seed.")
     p.add_argument("--augment-rotation", type=float, default=0.0,
                    help="Maximum random 3D rotation angle in degrees for IMU data augmentation (default: 0.0, disabled).")
@@ -153,9 +156,15 @@ def parse_args(argv=None) -> argparse.Namespace:
 def main(argv=None) -> int:
     args = parse_args(argv)
     
-    # Generate run timestamp
+    # Generate run timestamp or use custom run name
     import time
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    if args.run_name:
+        if not args.run_name.startswith("training_session_"):
+            ui.error("Custom run name (--run-name) must start with 'training_session_' prefix!")
+            return 1
+        timestamp = args.run_name
+    else:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
     
     ui.hr(title="Multi-Branch CNN Training & Optimization Pipeline")
     
@@ -271,6 +280,7 @@ def main(argv=None) -> int:
                     ds=ds,
                     split_type=args.split,
                     test_fraction=args.test_fraction,
+                    val_fraction=args.val_fraction,
                     epochs=args.optuna_epochs,
                     batch_size=args.batch_size,
                     model_name=None, # do not save trial folders
@@ -339,6 +349,7 @@ def main(argv=None) -> int:
         ds=ds,
         split_type=args.split,
         test_fraction=args.test_fraction,
+        val_fraction=args.val_fraction,
         epochs=args.epochs,
         batch_size=args.batch_size,
         model_name=args.model_name,
