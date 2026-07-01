@@ -551,17 +551,57 @@ def train_model(
         # Gather unique session/group directories used
         sessions_used = sorted(list(set(ds.groups.tolist())))
         
+        # Programmatic layer details and size compilation
+        def format_shape(shape):
+            if shape is None:
+                return None
+            if isinstance(shape, list):
+                return [format_shape(s) for s in shape]
+            if isinstance(shape, tuple):
+                return [int(dim) if dim is not None else None for dim in shape]
+            return str(shape)
+
+        model_layers_info = []
+        for layer in model.layers:
+            try:
+                out_shape = layer.output_shape
+            except AttributeError:
+                try:
+                    out_shape = layer.input_shape
+                except AttributeError:
+                    out_shape = None
+            
+            model_layers_info.append({
+                "layer_name": layer.name,
+                "class_name": layer.__class__.__name__,
+                "output_shape": format_shape(out_shape),
+                "parameter_count": int(layer.count_params())
+            })
+        
+        model_structure = {
+            "total_parameters": int(model.count_params()),
+            "layers": model_layers_info
+        }
+
+        total_samples = len(train_idx) + len(val_idx) + len(test_idx)
+        
         metadata = {
             "timestamp": timestamp,
             "model_name": model_name,
             "training_duration_s": training_duration_s,
             "epochs_trained": len(history.epoch),
+            "early_stopped": bool(len(history.epoch) < epochs),
             "classes": ds.class_names,
             "channels": ds.channel_names,
             "wrist_channels": [ds.channel_names[i] for i in wrist_idx] if wrist_idx else [],
             "finger_channels": [ds.channel_names[i] for i in finger_idx] if finger_idx else [],
             "feature_names": ds.feature_names,
             "feature_toggles": feature_toggles,
+            "features_selection": {
+                "default_selected_features": [f for f, v in feature_toggles.items() if v],
+                "default_deselected_features": [f for f, v in feature_toggles.items() if not v]
+            },
+            "model_structure": model_structure,
             "machine_info": {
                 "hostname": platform.node(),
                 "os": f"{platform.system()}-{platform.release()}",
@@ -585,6 +625,13 @@ def train_model(
             },
             "split_info": {
                 "strategy": split_type,
+                "total_samples": total_samples,
+                "train_size_abs": len(train_idx),
+                "val_size_abs": len(val_idx),
+                "test_size_abs": len(test_idx),
+                "train_fraction_real": float(len(train_idx)) / max(1, total_samples),
+                "val_fraction_real": float(len(val_idx)) / max(1, total_samples),
+                "test_fraction_real": float(len(test_idx)) / max(1, total_samples),
                 "train_sessions": sorted(list(set(ds.groups[train_idx].tolist()))),
                 "val_sessions": sorted(list(set(ds.groups[val_idx].tolist()))),
                 "test_sessions": sorted(list(set(ds.groups[test_idx].tolist())))

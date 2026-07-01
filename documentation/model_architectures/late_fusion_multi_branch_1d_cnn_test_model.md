@@ -21,7 +21,36 @@ The model `late_fusion_cnn_test` acts as our baseline playground model. It is us
 
 ## Architecture Design: Late Fusion Multi-Branch CNN
 
-Because we are fusing two distinct physical nodes (Wrist vs. Finger) and handcrafted statistical features and (at least according to our research) it is a fairly standard and proven architecture for this kind of application we decided to use a **Late Fusion Multi-Branch Conv1D CNN** as a initial baseline architecture:
+Because we are fusing two distinct physical nodes (Wrist vs. Finger) and handcrafted statistical features and (at least according to our research) it is a fairly standard and proven architecture for this kind of application we decided to use a **Late Fusion Multi-Branch Conv1D CNN** as a baseline architecture for our initial tests.
+
+### Key Architectural Choices:
+
+1. **Parallel Temporal Branches (Late Fusion):**
+   * Keeping the Wrist and Finger networks separate allows each branch to build local spatial features independently before merging. Arm gestures are dominated by wrist dynamics, whereas hand gestures are dominated by finger-to-wrist deltas.
+2. **Conv1D for Temporal Learning:**
+   * 1D convolutions extract shift-invariant local features along the timeline. This helps handle slight temporal misalignments during real-time sliding window inference.
+3. **Global Average Pooling (GAP) vs. Flattening:**
+   * Replacing flat outputs with `GlobalAveragePooling1D` reduces the parameter footprint drastically, preventing overfitting on small training sets.
+4. **Regularization:**
+   * Batch Normalization is applied after each Conv1D layer to stabilize training.
+   * L2 kernel regularization (`l2(1e-4)`) is applied to all Conv1D layers in the Wrist and Finger branches to keep weights small and smooth.
+   * Dropout ($50\%$) is added before the final classifier to ensure generalization.
+5. **Loss & Optimization:**
+   * **Loss:** `categorical_crossentropy` (with one-hot label encoding).
+   * **Optimizer:** `Adam(learning_rate=0.001)` paired with a learning rate decay schedule (`ReduceLROnPlateau`).
+
+### Testing Architectures
+
+#### **1. Baseline Model Architecture (`conv_filters = [32, 64]`, `dense_units = 64`)**
+*   **Total Parameters:** 24,968
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=32, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `MaxPool1D(pool_size=2)`
+    *   `Conv1D(filters=64, kernel_size=3, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(64, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Overfitting Vulnerability:** High capacity in both the convolutional encoders and the dense classification head allows the network to memorize absolute coordinate offsets and baseline sensor orientation shifts unique to individual sessions.
 
 ```mermaid
 graph TD
@@ -44,22 +73,54 @@ graph TD
     Dropout --> Softmax["Softmax Layer (8 Classes)"]
 ```
 
+#### **2. Experiment B Architecture (`conv_filters = [16]`, `dense_units = 64`)**
+*   **Total Parameters:** 4,472
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=16, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(64, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Design Intent:** Targets **feature branch simplification**. By reducing the convolutional block to a single layer with 16 filters, the model is physically constrained from extracting complex, multi-scale temporal signal shapes. It forces the encoders to focus only on low-frequency, primary kinematic accelerations and rotations.
 
-### Key Architectural Choices:
+#### **3. Experiment D Architecture (`conv_filters = [32, 64]`, `dense_units = 16`)**
+*   **Total Parameters:** 18,808
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=32, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `MaxPool1D(pool_size=2)`
+    *   `Conv1D(filters=64, kernel_size=3, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(16, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Design Intent (Our Best Performer):** Targets **classifier capacity bottlenecking**. While preserving the full multi-scale convolutional feature extractor of the baseline, it squeezes the classification dense head down from 64 to 16 units. Combined with $50\%$ dropout, this structural bottleneck makes it mathematically impossible for the dense head to memorize specific high-frequency training noises or session baseline profiles, forcing the network to make decisions based purely on generalized, scale-invariant spatial-temporal patterns.
 
-1. **Parallel Temporal Branches (Late Fusion):**
-   * Keeping the Wrist and Finger networks separate allows each branch to build local spatial features independently before merging. Arm gestures are dominated by wrist dynamics, whereas hand gestures are dominated by finger-to-wrist deltas.
-2. **Conv1D for Temporal Learning:**
-   * 1D convolutions extract shift-invariant local features along the timeline. This helps handle slight temporal misalignments during real-time sliding window inference.
-3. **Global Average Pooling (GAP) vs. Flattening:**
-   * Replacing flat outputs with `GlobalAveragePooling1D` reduces the parameter footprint drastically, preventing overfitting on small training sets.
-4. **Regularization:**
-   * Batch Normalization is applied after each Conv1D layer to stabilize training.
-   * L2 kernel regularization (`l2(1e-4)`) is applied to all Conv1D layers in the Wrist and Finger branches to keep weights small and smooth.
-   * Dropout ($50\%$) is added before the final classifier to ensure generalization.
-5. **Loss & Optimization:**
-   * **Loss:** `categorical_crossentropy` (with one-hot label encoding).
-   * **Optimizer:** `Adam(learning_rate=0.001)` paired with a learning rate decay schedule (`ReduceLROnPlateau`).
+#### **4. Experiment E (Compact) Architecture (`conv_filters = [16]`, `dense_units = 16`)**
+*   **Total Parameters:** 2,664
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=16, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(16, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Design Intent:** The **ultra-constrained layout**. It combines both feature branch simplification and classifier bottlenecking. It reduces the parameter footprint by **$89.3\%$** compared to the baseline. Although it has a very tiny memory footprint, the high regularization from structural bottlenecks keeps its performance on-par with the baseline while showing no signs of validation loss divergence.
+
+```mermaid
+graph TD
+    subgraph Experiment E Compact Layout
+        In_W["Wrist Input (150, 11)"] --> Conv_W["Conv1D (16, kernel=5)"]
+        Conv_W --> BN_W["BatchNorm & ReLU"]
+        BN_W --> GAP_W["GlobalAveragePooling1D"]
+
+        In_F["Finger Input (150, 12)"] --> Conv_F["Conv1D (16, kernel=5)"]
+        Conv_F --> BN_F["BatchNorm & ReLU"]
+        BN_F --> GAP_F["GlobalAveragePooling1D"]
+
+        GAP_W --> Concat["Concatenate Layer (32 units)"]
+        GAP_F --> Concat
+
+        Concat --> Dense_Head["Dense (16, ReLU)"]
+        Dense_Head --> Drop["Dropout (0.5)"]
+        Drop --> Softmax["Softmax Output (8 classes)"]
+    end
+```
 
 ---
 
@@ -104,29 +165,6 @@ The training pipeline integrates:
   *   The script executes the number of trial iterations specified by `--optuna-trials` (e.g., 30 trials). In each trial, it samples different subsets of the 21 optional dynamic features, trains a trial candidate model for `--optuna-epochs` (e.g., 10 epochs), and computes the **Joint Utility Score**.
   *   Once the search is complete, it extracts the optimal feature toggle layout and automatically triggers a **final retraining run** on those optimal features using the epoch budget specified by `--epochs`.
 2. **Dynamic Retrofitting:** Saves model checkpoints along with a serialized `model_metadata.json` containing the flat `"feature_toggles"` map.
-
----
-
-## Real-Time Inference System
-
-The real-time system executes in the following sequence:
-1. **Sensor Connection:** Automatically connects to the dual-IMU serial ports (specified in `config/devices.yml`). Alternatively, starts high-frequency simulated streams when `--simulate` is set.
-2. **Static Calibration:** Prompts the user to press `[Enter]` and hold still for 6.0 seconds. Computes the baseline offset and aligns sensor timestamps.
-3. **Sliding Window Slicing:** Asynchronously collects data, extracts windows dynamically matching the model's expected shape, performs normalization, and computes inference.
-4. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/config/powerpoint_control.yml) and presses the keys on the active window.
-
-### Usage Commands:
-
-* **Live Mode (Physical Rigs):**
-  ```bash
-  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
-  ```
-
-* **Simulated Dry-Run (No Hardware Needed):**
-  Useful for quick offline verification and pipeline logic checks:
-  ```bash
-  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
-  ```
 
 ---
 
@@ -267,7 +305,7 @@ By running with `--optimize`, Optuna naturally favors smaller feature spaces and
     *   *Mechanism:* Adds a squared weight penalty to the loss function, forcing the layer weight coefficients to remain small. This results in smoother mathematical decision curves, preventing the filters from memorizing high-frequency sensor noise.
     *   We applied a moderate `kernel_regularizer=keras.regularizers.l2(1e-4)` to the Conv1D kernels in the Wrist and Finger branches, because over-regularization can lead to underfitting.
 
-### What we could still do: Lower the Model Capacity (Scale Down Architecture)
+### Lower the Model Capacity (Scale Down Architecture)
 A smaller model has a lower capacity to memorize data:
 *   **Reduce Filters:** In [model.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py), reduce the Conv1D filters. Instead of the default `32 -> 64` configuration, scale down to `16 -> 32` or even a single Conv1D layer with `16` filters.
 *   **Reduce Dense Neurons:** Scale down the classification dense layer from `64` neurons to `32` or `16`.
@@ -426,7 +464,10 @@ To isolate the physical impact of sensor repositioning from the software issues 
 * **This way every single class can be represented in the train, test and validation set without information leakage**.
 
 
-```
+
+
+
+
 
 ##### **D. Generalization Judgment**
 
@@ -509,3 +550,26 @@ The capacity scaling and jitter experiments conducted after the initial Leave-Se
   * **Multi-Session Data Collection**: Collect at least 4 to 5 sessions per class with deliberate armband re-positioning between runs to enable a valid 3-way Leave-Session-Out split.
   * **Multi-Subject Data & LOSO Validation**: Transition the validation protocol to Leave-One-Subject-Out (LOSO) cross-validation. (Note: Collecting multi-subject data would have gone far beyond the scope and academic context of this project, but remains the ideal path for general commercialization).
   * **Runtime Calibration (ZUPT)**: Implement Zero-Velocity Updates (ZUPT) at runtime to continuously re-align sensor biases, minimizing the domain shift before inputs enter the CNN.
+
+---
+
+## Real-Time Inference System
+
+The real-time system executes in the following sequence:
+1. **Sensor Connection:** Automatically connects to the dual-IMU serial ports (specified in `config/devices.yml`). Alternatively, starts high-frequency simulated streams when `--simulate` is set.
+2. **Static Calibration:** Prompts the user to press `[Enter]` and hold still for 6.0 seconds. Computes the baseline offset and aligns sensor timestamps.
+3. **Sliding Window Slicing:** Asynchronously collects data, extracts windows dynamically matching the model's expected shape, performs normalization, and computes inference.
+4. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/config/powerpoint_control.yml) and presses the keys on the active window.
+
+### Usage Commands:
+
+* **Live Mode (Physical Rigs):**
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
+  ```
+
+* **Simulated Dry-Run (No Hardware Needed):**
+  Useful for quick offline verification and pipeline logic checks:
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
+  ```
