@@ -185,7 +185,14 @@
       "session_1782846044",
       "session_1782846444",
       "session_1782846877"
-    ]
+    ],
+    "total_samples": 1950,
+    "train_size_abs": 1365,
+    "val_size_abs": 195,
+    "test_size_abs": 390,
+    "train_fraction_real": 0.7,
+    "val_fraction_real": 0.1,
+    "test_fraction_real": 0.2
   },
   "performance": {
     "best_epoch": 36,
@@ -319,5 +326,269 @@
       "include_gyroscope_magnitude": false,
       "include_gravity_free_linear_acceleration": true
     }
+  },
+  "features_selection": {
+    "default_selected_features": [
+      "IMU1_accX",
+      "IMU1_accZ",
+      "IMU1_gyrX",
+      "IMU1_pitch",
+      "IMU2_accX",
+      "IMU2_accY",
+      "IMU2_accZ",
+      "IMU2_gyrX",
+      "diff_accX",
+      "diff_accZ",
+      "IMU1_gyr_mag",
+      "IMU1_accY",
+      "IMU1_gyrY",
+      "IMU1_acc_mag",
+      "IMU1_relative_yaw",
+      "IMU2_acc_mag",
+      "IMU2_relative_yaw",
+      "IMU2_linear_jerkX",
+      "IMU2_angular_accelerationZ",
+      "diff_accY",
+      "diff_gyrX"
+    ],
+    "default_deselected_features": [
+      "IMU1_linear_jerkX",
+      "IMU1_linear_jerkZ",
+      "IMU2_linear_jerkZ",
+      "IMU1_angular_accelerationY",
+      "IMU1_angular_accelerationZ",
+      "IMU2_angular_accelerationY",
+      "IMU1_gyrZ",
+      "IMU1_roll",
+      "IMU1_linear_jerkY",
+      "IMU1_angular_accelerationX",
+      "IMU2_gyrY",
+      "IMU2_gyrZ",
+      "IMU2_gyr_mag",
+      "IMU2_linear_jerkY",
+      "IMU2_angular_accelerationX",
+      "diff_gyrY",
+      "diff_gyrZ"
+    ]
+  },
+  "early_stopped": true,
+  "model_structure": {
+    "total_parameters": 25384,
+    "layers": [
+      {
+        "layer_name": "wrist_input",
+        "class_name": "InputLayer",
+        "output_shape": [
+          null,
+          150,
+          9
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "finger_input",
+        "class_name": "InputLayer",
+        "output_shape": [
+          null,
+          150,
+          12
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "wrist_conv1",
+        "class_name": "Conv1D",
+        "output_shape": [
+          null,
+          150,
+          32
+        ],
+        "parameter_count": 1472
+      },
+      {
+        "layer_name": "finger_conv1",
+        "class_name": "Conv1D",
+        "output_shape": [
+          null,
+          150,
+          32
+        ],
+        "parameter_count": 1952
+      },
+      {
+        "layer_name": "wrist_bn1",
+        "class_name": "BatchNormalization",
+        "output_shape": [
+          null,
+          150,
+          32
+        ],
+        "parameter_count": 128
+      },
+      {
+        "layer_name": "finger_bn1",
+        "class_name": "BatchNormalization",
+        "output_shape": [
+          null,
+          150,
+          32
+        ],
+        "parameter_count": 128
+      },
+      {
+        "layer_name": "wrist_relu1",
+        "class_name": "ReLU",
+        "output_shape": [
+          null,
+          150,
+          32
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "finger_relu1",
+        "class_name": "ReLU",
+        "output_shape": [
+          null,
+          150,
+          32
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "wrist_pool1",
+        "class_name": "MaxPooling1D",
+        "output_shape": [
+          null,
+          75,
+          32
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "finger_pool1",
+        "class_name": "MaxPooling1D",
+        "output_shape": [
+          null,
+          75,
+          32
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "wrist_conv2",
+        "class_name": "Conv1D",
+        "output_shape": [
+          null,
+          75,
+          64
+        ],
+        "parameter_count": 6208
+      },
+      {
+        "layer_name": "finger_conv2",
+        "class_name": "Conv1D",
+        "output_shape": [
+          null,
+          75,
+          64
+        ],
+        "parameter_count": 6208
+      },
+      {
+        "layer_name": "wrist_bn2",
+        "class_name": "BatchNormalization",
+        "output_shape": [
+          null,
+          75,
+          64
+        ],
+        "parameter_count": 256
+      },
+      {
+        "layer_name": "finger_bn2",
+        "class_name": "BatchNormalization",
+        "output_shape": [
+          null,
+          75,
+          64
+        ],
+        "parameter_count": 256
+      },
+      {
+        "layer_name": "wrist_relu2",
+        "class_name": "ReLU",
+        "output_shape": [
+          null,
+          75,
+          64
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "finger_relu2",
+        "class_name": "ReLU",
+        "output_shape": [
+          null,
+          75,
+          64
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "wrist_gap",
+        "class_name": "GlobalAveragePooling1D",
+        "output_shape": [
+          null,
+          64
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "finger_gap",
+        "class_name": "GlobalAveragePooling1D",
+        "output_shape": [
+          null,
+          64
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "concat_branch",
+        "class_name": "Concatenate",
+        "output_shape": [
+          null,
+          128
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "classifier_dense",
+        "class_name": "Dense",
+        "output_shape": [
+          null,
+          64
+        ],
+        "parameter_count": 8256
+      },
+      {
+        "layer_name": "classifier_dropout",
+        "class_name": "Dropout",
+        "output_shape": [
+          null,
+          64
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "softmax_output",
+        "class_name": "Dense",
+        "output_shape": [
+          null,
+          8
+        ],
+        "parameter_count": 520
+      }
+    ]
   }
 }

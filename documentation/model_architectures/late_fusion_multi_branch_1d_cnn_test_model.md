@@ -21,7 +21,36 @@ The model `late_fusion_cnn_test` acts as our baseline playground model. It is us
 
 ## Architecture Design: Late Fusion Multi-Branch CNN
 
-Because we are fusing two distinct physical nodes (Wrist vs. Finger) and handcrafted statistical features and (at least according to our research) it is a fairly standard and proven architecture for this kind of application we decided to use a **Late Fusion Multi-Branch Conv1D CNN** as a initial baseline architecture:
+Because we are fusing two distinct physical nodes (Wrist vs. Finger) and handcrafted statistical features and (at least according to our research) it is a fairly standard and proven architecture for this kind of application we decided to use a **Late Fusion Multi-Branch Conv1D CNN** as a baseline architecture for our initial tests.
+
+### Key Architectural Choices:
+
+1. **Parallel Temporal Branches (Late Fusion):**
+   * Keeping the Wrist and Finger networks separate allows each branch to build local spatial features independently before merging. Arm gestures are dominated by wrist dynamics, whereas hand gestures are dominated by finger-to-wrist deltas.
+2. **Conv1D for Temporal Learning:**
+   * 1D convolutions extract shift-invariant local features along the timeline. This helps handle slight temporal misalignments during real-time sliding window inference.
+3. **Global Average Pooling (GAP) vs. Flattening:**
+   * Replacing flat outputs with `GlobalAveragePooling1D` reduces the parameter footprint drastically, preventing overfitting on small training sets.
+4. **Regularization:**
+   * Batch Normalization is applied after each Conv1D layer to stabilize training.
+   * L2 kernel regularization (`l2(1e-4)`) is applied to all Conv1D layers in the Wrist and Finger branches to keep weights small and smooth.
+   * Dropout ($50\%$) is added before the final classifier to ensure generalization.
+5. **Loss & Optimization:**
+   * **Loss:** `categorical_crossentropy` (with one-hot label encoding).
+   * **Optimizer:** `Adam(learning_rate=0.001)` paired with a learning rate decay schedule (`ReduceLROnPlateau`).
+
+### Testing Architectures
+
+#### **1. Baseline Model Architecture (`conv_filters = [32, 64]`, `dense_units = 64`)**
+*   **Total Parameters:** 24,968
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=32, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `MaxPool1D(pool_size=2)`
+    *   `Conv1D(filters=64, kernel_size=3, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(64, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Overfitting Vulnerability:** High capacity in both the convolutional encoders and the dense classification head allows the network to memorize absolute coordinate offsets and baseline sensor orientation shifts unique to individual sessions.
 
 ```mermaid
 graph TD
@@ -44,22 +73,54 @@ graph TD
     Dropout --> Softmax["Softmax Layer (8 Classes)"]
 ```
 
+#### **2. Experiment B Architecture (`conv_filters = [16]`, `dense_units = 64`)**
+*   **Total Parameters:** 4,472
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=16, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(64, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Design Intent:** Targets **feature branch simplification**. By reducing the convolutional block to a single layer with 16 filters, the model is physically constrained from extracting complex, multi-scale temporal signal shapes. It forces the encoders to focus only on low-frequency, primary kinematic accelerations and rotations.
 
-### Key Architectural Choices:
+#### **3. Experiment D Architecture (`conv_filters = [32, 64]`, `dense_units = 16`)**
+*   **Total Parameters:** 18,808
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=32, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `MaxPool1D(pool_size=2)`
+    *   `Conv1D(filters=64, kernel_size=3, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(16, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Design Intent (Our Best Performer):** Targets **classifier capacity bottlenecking**. While preserving the full multi-scale convolutional feature extractor of the baseline, it squeezes the classification dense head down from 64 to 16 units. Combined with $50\%$ dropout, this structural bottleneck makes it mathematically impossible for the dense head to memorize specific high-frequency training noises or session baseline profiles, forcing the network to make decisions based purely on generalized, scale-invariant spatial-temporal patterns.
 
-1. **Parallel Temporal Branches (Late Fusion):**
-   * Keeping the Wrist and Finger networks separate allows each branch to build local spatial features independently before merging. Arm gestures are dominated by wrist dynamics, whereas hand gestures are dominated by finger-to-wrist deltas.
-2. **Conv1D for Temporal Learning:**
-   * 1D convolutions extract shift-invariant local features along the timeline. This helps handle slight temporal misalignments during real-time sliding window inference.
-3. **Global Average Pooling (GAP) vs. Flattening:**
-   * Replacing flat outputs with `GlobalAveragePooling1D` reduces the parameter footprint drastically, preventing overfitting on small training sets.
-4. **Regularization:**
-   * Batch Normalization is applied after each Conv1D layer to stabilize training.
-   * L2 kernel regularization (`l2(1e-4)`) is applied to all Conv1D layers in the Wrist and Finger branches to keep weights small and smooth.
-   * Dropout ($50\%$) is added before the final classifier to ensure generalization.
-5. **Loss & Optimization:**
-   * **Loss:** `categorical_crossentropy` (with one-hot label encoding).
-   * **Optimizer:** `Adam(learning_rate=0.001)` paired with a learning rate decay schedule (`ReduceLROnPlateau`).
+#### **4. Experiment E (Compact) Architecture (`conv_filters = [16]`, `dense_units = 16`)**
+*   **Total Parameters:** 2,664
+*   **Wrist/Finger Branch Layout:**
+    *   `Conv1D(filters=16, kernel_size=5, padding="same")` $\rightarrow$ `BatchNorm` $\rightarrow$ `ReLU`
+    *   `GlobalAveragePooling1D`
+*   **Classification Head Layout:**
+    *   `Concatenate` $\rightarrow$ `Dense(16, activation="relu")` $\rightarrow$ `Dropout(0.5)` $\rightarrow$ `Dense(8, activation="softmax")`
+*   **Design Intent:** The **ultra-constrained layout**. It combines both feature branch simplification and classifier bottlenecking. It reduces the parameter footprint by **$89.3\%$** compared to the baseline. Although it has a very tiny memory footprint, the high regularization from structural bottlenecks keeps its performance on-par with the baseline while showing no signs of validation loss divergence.
+
+```mermaid
+graph TD
+    subgraph Experiment E Compact Layout
+        In_W["Wrist Input (150, 11)"] --> Conv_W["Conv1D (16, kernel=5)"]
+        Conv_W --> BN_W["BatchNorm & ReLU"]
+        BN_W --> GAP_W["GlobalAveragePooling1D"]
+
+        In_F["Finger Input (150, 12)"] --> Conv_F["Conv1D (16, kernel=5)"]
+        Conv_F --> BN_F["BatchNorm & ReLU"]
+        BN_F --> GAP_F["GlobalAveragePooling1D"]
+
+        GAP_W --> Concat["Concatenate Layer (32 units)"]
+        GAP_F --> Concat
+
+        Concat --> Dense_Head["Dense (16, ReLU)"]
+        Dense_Head --> Drop["Dropout (0.5)"]
+        Drop --> Softmax["Softmax Output (8 classes)"]
+    end
+```
 
 ---
 
@@ -107,29 +168,6 @@ The training pipeline integrates:
 
 ---
 
-## Real-Time Inference System
-
-The real-time system executes in the following sequence:
-1. **Sensor Connection:** Automatically connects to the dual-IMU serial ports (specified in `config/devices.yml`). Alternatively, starts high-frequency simulated streams when `--simulate` is set.
-2. **Static Calibration:** Prompts the user to press `[Enter]` and hold still for 6.0 seconds. Computes the baseline offset and aligns sensor timestamps.
-3. **Sliding Window Slicing:** Asynchronously collects data, extracts windows dynamically matching the model's expected shape, performs normalization, and computes inference.
-4. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/config/powerpoint_control.yml) and presses the keys on the active window.
-
-### Usage Commands:
-
-* **Live Mode (Physical Rigs):**
-  ```bash
-  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
-  ```
-
-* **Simulated Dry-Run (No Hardware Needed):**
-  Useful for quick offline verification and pipeline logic checks:
-  ```bash
-  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
-  ```
-
----
-
 ## Trained Model Package File Structure
 
 Each training run creates a directory under `models/late_fusion_cnn_test/training_session_<index>_<timestamp>/` containing the following files:
@@ -145,37 +183,180 @@ Each training run creates a directory under `models/late_fusion_cnn_test/trainin
 
 ## Model Metadata Structure (model_metadata.json)
 
-The `model_metadata.json` is a comprehensive descriptor file generated during training that serves as the single source of truth for the real-time inference script. It is structured into the following key blocks:
+The `model_metadata.json` is a comprehensive descriptor file generated during training that serves as the single source of truth for the real-time inference script and model audits. It is structured into the following key blocks:
 
 ### 1. Run & Architecture Identification
 *   `timestamp` (string): The timestamp identifier (`YYYYMMDD_HHMMSS`) of the training run.
 *   `model_name` (string): The registered name of the architecture class.
 *   `training_duration_s` (float): The total execution time of the training epochs in seconds.
 *   `epochs_trained` (int): Number of epochs completed before training terminated.
+*   `early_stopped` (boolean): `true` if training was aborted early by the `EarlyStopping` callback (i.e. before reaching the maximum epoch limit), `false` otherwise.
 *   `classes` (list of strings): The ordered list of classified gesture names (determines the output neuron index).
 
 ### 2. Feature & Input Shape Configurations
-*   `feature_toggles` (object): Key-value map of all 37 possible mathematical features to boolean flags. Enabled features (`true`) are actively computed; disabled features (`false`) are ignored. The disabled features are not used at all - we identified those during our feature analysis.
+*   `feature_toggles` (object): Key-value map of all 37 possible mathematical features to boolean flags. Enabled features (`true`) are actively computed; disabled features (`false`) are ignored.
+*   `features_selection` (object): Lists of active and inactive features for direct auditing:
+    *   `default_selected_features` (list of strings): Features that are selected/active for this specific model configuration.
+    *   `default_deselected_features` (list of strings): Features that are deselected/inactive.
 *   `channels` (list of strings): The ordered list of all active features in the flat concatenated dataset.
 *   `wrist_channels` (list of strings): Active feature channels directed into the Wrist branch. Used by the inference script to slice the sliding window's Wrist input array dynamically.
 *   `finger_channels` (list of strings): Active feature channels directed into the Finger branch. Used by the inference script to slice the sliding window's Finger input array dynamically.
 
-### 3. Hyperparameters & Splits
-*   `training_parameters` (object): Includes the learning rate, batch size, split strategy (`chronological` or `leave-session-out`), test fraction, and random seed.
-*   `split_info` (object): Logs the exact recording sessions used for training (`train_sessions`) vs. testing (`test_sessions`), ensuring validation isolation.
+### 3. Model Structure & Component Size Details
+*   `model_structure` (object): Dynamic layer-by-layer layout summary of the compiled Keras network:
+    *   `total_parameters` (int): Total parameter count of the model (sum of weights and biases).
+    *   `layers` (list of objects): Each layer contains:
+        *   `layer_name` (string): Unique identifier name of the layer in the Keras graph.
+        *   `class_name` (string): The Keras class type (e.g. `Conv1D`, `BatchNormalization`, `Dense`, `Dropout`).
+        *   `output_shape` (list of dimensions/nulls): Slicing resolution (e.g. `[null, 150, 16]`).
+        *   `parameter_count` (int): Number of weights/biases learned in this specific layer.
 
-### 4. Performance Metrics
+### 4. Hyperparameters & Splits
+*   `training_parameters` (object): Includes the learning rate, batch size, split strategy (`chronological`, `leave-session-out`, or `stratified`), test fraction, and random seed.
+*   `split_info` (object): Records both session groupings and real data sizes:
+    *   `strategy` (string): Selected splitting method.
+    *   `total_samples` (int): Total size of the processed dataset.
+    *   `train_size_abs` / `val_size_abs` / `test_size_abs` (ints): Absolute counts of windows allocated to each disjoint split.
+    *   `train_fraction_real` / `val_fraction_real` / `test_fraction_real` (floats): Real decimal percentages of windows allocated.
+    *   `train_sessions` / `val_sessions` / `test_sessions` (lists of strings): Lists of recording session IDs assigned to each split.
+
+### 5. Performance Metrics
 *   `performance` (object): Tracks the validation and training accuracy/loss at the best epoch, along with the macro validation F1-score.
 *   `evaluation` (object): Full post-training metrics breakdown, including precision, recall, F1-score, and support sample counts per individual class.
 
-### 5. Data Preprocessing Pipeline Configuration
+### 6. Data Preprocessing Pipeline Configuration
 Represents the exact preprocessing pipeline configuration used to transform raw sensor readings during training:
 *   `sample_rate_hz` (float): The expected sensor sampling rate (100 Hz).
 *   `window_size` (int): Number of samples per sliding window (150 samples = 1.5s).
-*   `calibration` (object): Calibration offset policies (e.g. whether gyroscope bias is removed and accelerometer readings are normalized to gravity Gs).
-*   `filters` (object): High-pass and low-pass filtering parameters (e.g. Butterworth filter cutoff frequencies).
-*   `orientation` (object): Sensor fusion complementary filter alpha coefficients (determines the weighting of accelerometer tilt vs. gyroscope integration).
-*   `features` (object): Configures the **feature generation / extraction phase**. It specifies which derived mathematical channels (e.g., magnitudes, sensor differences, linear jerks, angular accelerations, and relative yaw) are computed and loaded from the raw IMU readings when compiling the dataset baseline. Any feature family disabled here (`false`) is not generated at all, while enabled families (`true`) are loaded into the baseline pool where they can then be selected or pruned by `feature_toggles`.
+*   `calibration` (object): Calibration offset policies.
+*   `filters` (object): High-pass and low-pass filtering parameters.
+*   `orientation` (object): Sensor fusion alpha coefficients.
+*   `features` (object): Configures the **feature generation / extraction phase**.
+
+---
+
+### JSON Schema Blueprint (`model_metadata.json`)
+
+Here is an example layout demonstrating the exact structure of a generated metadata package:
+
+```json
+{
+  "timestamp": "training_session_size_test_conv16_dense16",
+  "model_name": "late_fusion_cnn_test",
+  "training_duration_s": 26.2945,
+  "epochs_trained": 62,
+  "early_stopped": true,
+  "classes": [
+    "none",
+    "swipe_left",
+    "swipe_right",
+    "circle_cw",
+    "circle_ccw",
+    "fist",
+    "jerk_down",
+    "jerk_up"
+  ],
+  "channels": [
+    "IMU1_accX",
+    "IMU1_accZ"
+  ],
+  "wrist_channels": [
+    "IMU1_accX",
+    "IMU1_accZ"
+  ],
+  "finger_channels": [],
+  "feature_names": [],
+  "feature_toggles": {
+    "IMU1_accX": true,
+    "IMU1_accZ": true,
+    "IMU1_accY": false
+  },
+  "features_selection": {
+    "default_selected_features": [
+      "IMU1_accX",
+      "IMU1_accZ"
+    ],
+    "default_deselected_features": [
+      "IMU1_accY"
+    ]
+  },
+  "model_structure": {
+    "total_parameters": 2584,
+    "layers": [
+      {
+        "layer_name": "wrist_input",
+        "class_name": "InputLayer",
+        "output_shape": [
+          null,
+          150,
+          11
+        ],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "wrist_conv1",
+        "class_name": "Conv1D",
+        "output_shape": [
+          null,
+          150,
+          16
+        ],
+        "parameter_count": 896
+      }
+    ]
+  },
+  "training_parameters": {
+    "epochs": 70,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "split_type": "chronological",
+    "test_fraction": 0.27,
+    "val_fraction": 0.15,
+    "seed": 42
+  },
+  "split_info": {
+    "strategy": "chronological",
+    "total_samples": 1950,
+    "train_size_abs": 1132,
+    "val_size_abs": 292,
+    "test_size_abs": 526,
+    "train_fraction_real": 0.5805,
+    "val_fraction_real": 0.1497,
+    "test_fraction_real": 0.2697,
+    "train_sessions": [
+      "session_1782600797"
+    ],
+    "val_sessions": [
+      "session_1782830502"
+    ],
+    "test_sessions": [
+      "session_1782830502"
+    ]
+  },
+  "performance": {
+    "best_epoch": 42,
+    "train_accuracy": 0.8942,
+    "train_loss": 0.2901,
+    "val_accuracy": 0.9406,
+    "val_loss": 0.2177,
+    "val_f1_score": 0.9686
+  },
+  "evaluation": {
+    "accuracy": 0.9626,
+    "macro_avg": {
+      "precision": 0.9532,
+      "recall": 0.9864,
+      "f1-score": 0.9686,
+      "support": 428.0
+    }
+  },
+  "pipeline_config": {
+    "sample_rate_hz": 100.0,
+    "window_size": 150,
+    "pad_mode": "edge"
+  }
+}
+```
 
 ---
 
@@ -267,7 +448,7 @@ By running with `--optimize`, Optuna naturally favors smaller feature spaces and
     *   *Mechanism:* Adds a squared weight penalty to the loss function, forcing the layer weight coefficients to remain small. This results in smoother mathematical decision curves, preventing the filters from memorizing high-frequency sensor noise.
     *   We applied a moderate `kernel_regularizer=keras.regularizers.l2(1e-4)` to the Conv1D kernels in the Wrist and Finger branches, because over-regularization can lead to underfitting.
 
-### What we could still do: Lower the Model Capacity (Scale Down Architecture)
+### Lower the Model Capacity (Scale Down Architecture)
 A smaller model has a lower capacity to memorize data:
 *   **Reduce Filters:** In [model.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py), reduce the Conv1D filters. Instead of the default `32 -> 64` configuration, scale down to `16 -> 32` or even a single Conv1D layer with `16` filters.
 *   **Reduce Dense Neurons:** Scale down the classification dense layer from `64` neurons to `32` or `16`.
@@ -426,7 +607,10 @@ To isolate the physical impact of sensor repositioning from the software issues 
 * **This way every single class can be represented in the train, test and validation set without information leakage**.
 
 
-```
+
+
+
+
 
 ##### **D. Generalization Judgment**
 
@@ -509,3 +693,26 @@ The capacity scaling and jitter experiments conducted after the initial Leave-Se
   * **Multi-Session Data Collection**: Collect at least 4 to 5 sessions per class with deliberate armband re-positioning between runs to enable a valid 3-way Leave-Session-Out split.
   * **Multi-Subject Data & LOSO Validation**: Transition the validation protocol to Leave-One-Subject-Out (LOSO) cross-validation. (Note: Collecting multi-subject data would have gone far beyond the scope and academic context of this project, but remains the ideal path for general commercialization).
   * **Runtime Calibration (ZUPT)**: Implement Zero-Velocity Updates (ZUPT) at runtime to continuously re-align sensor biases, minimizing the domain shift before inputs enter the CNN.
+
+---
+
+## Real-Time Inference System
+
+The real-time system executes in the following sequence:
+1. **Sensor Connection:** Automatically connects to the dual-IMU serial ports (specified in `config/devices.yml`). Alternatively, starts high-frequency simulated streams when `--simulate` is set.
+2. **Static Calibration:** Prompts the user to press `[Enter]` and hold still for 6.0 seconds. Computes the baseline offset and aligns sensor timestamps.
+3. **Sliding Window Slicing:** Asynchronously collects data, extracts windows dynamically matching the model's expected shape, performs normalization, and computes inference.
+4. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/config/powerpoint_control.yml) and presses the keys on the active window.
+
+### Usage Commands:
+
+* **Live Mode (Physical Rigs):**
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
+  ```
+
+* **Simulated Dry-Run (No Hardware Needed):**
+  Useful for quick offline verification and pipeline logic checks:
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
+  ```
