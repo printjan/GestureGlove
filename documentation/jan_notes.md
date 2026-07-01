@@ -80,23 +80,28 @@ Setup:
 
 
 
-```
+
+##### A. Pruned (Dismissed) Features
 *   `IMU1_linear_jerkX`
 *   `IMU1_linear_jerkZ`
 *   `IMU2_linear_jerkZ`
 *   `IMU1_angular_accelerationY`
 *   `IMU1_angular_accelerationZ`
 *   `IMU2_angular_accelerationY`
+
+##### B. Mandatory (Kept) Features
 *   `IMU1_accX`
 *   `IMU1_accZ`
 *   `IMU1_gyrX`
-*   `IMU1_pitch
+*   `IMU1_pitch`
 *   `IMU2_accX`
 *   `IMU2_accY`
 *   `IMU2_accZ`
 *   `IMU2_gyrX`
 *   `diff_accX`
 *   `diff_accZ`
+
+##### C. Potentially useful (Optional) Features
 *   `IMU1_gyr_mag`
 *   `IMU1_accY`
 *   `IMU1_gyrY`
@@ -115,9 +120,9 @@ Setup:
 *   `IMU2_linear_jerkY`
 *   `IMU2_angular_accelerationX`
 *   `IMU2_angular_accelerationZ`
-*   `diff_accY`
-*   `diff_gyrX`
-*   `diff_gyrY`
+*   `diff_accY` 
+*   `diff_gyrX` 
+*   `diff_gyrY` 
 *   `diff_gyrZ`
 ```
 

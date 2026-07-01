@@ -11,7 +11,7 @@ Implements the Late Fusion Multi-Branch Conv1D CNN architecture:
 
 from __future__ import annotations
 import keras
-from keras import layers, Model
+from keras import layers, Model, regularizers
 import numpy as np
 
 from data_fusion_project.core.logger_setup import get_logger
@@ -68,12 +68,12 @@ def build_multi_branch_cnn(
         wrist_input = layers.Input(shape=input_shape_wrist, name="wrist_input")
         inputs.append(wrist_input)
         
-        x1 = layers.Conv1D(filters=32, kernel_size=5, padding="same", name="wrist_conv1")(wrist_input)
+        x1 = layers.Conv1D(filters=32, kernel_size=5, padding="same", kernel_regularizer=regularizers.l2(1e-4), name="wrist_conv1")(wrist_input)
         x1 = layers.BatchNormalization(name="wrist_bn1")(x1)
         x1 = layers.ReLU(name="wrist_relu1")(x1)
         x1 = layers.MaxPooling1D(pool_size=2, name="wrist_pool1")(x1)
         
-        x1 = layers.Conv1D(filters=64, kernel_size=3, padding="same", name="wrist_conv2")(x1)
+        x1 = layers.Conv1D(filters=64, kernel_size=3, padding="same", kernel_regularizer=regularizers.l2(1e-4), name="wrist_conv2")(x1)
         x1 = layers.BatchNormalization(name="wrist_bn2")(x1)
         x1 = layers.ReLU(name="wrist_relu2")(x1)
         x1 = layers.GlobalAveragePooling1D(name="wrist_gap")(x1)
@@ -86,12 +86,12 @@ def build_multi_branch_cnn(
         finger_input = layers.Input(shape=input_shape_finger, name="finger_input")
         inputs.append(finger_input)
         
-        x2 = layers.Conv1D(filters=32, kernel_size=5, padding="same", name="finger_conv1")(finger_input)
+        x2 = layers.Conv1D(filters=32, kernel_size=5, padding="same", kernel_regularizer=regularizers.l2(1e-4), name="finger_conv1")(finger_input)
         x2 = layers.BatchNormalization(name="finger_bn1")(x2)
         x2 = layers.ReLU(name="finger_relu1")(x2)
         x2 = layers.MaxPooling1D(pool_size=2, name="finger_pool1")(x2)
         
-        x2 = layers.Conv1D(filters=64, kernel_size=3, padding="same", name="finger_conv2")(x2)
+        x2 = layers.Conv1D(filters=64, kernel_size=3, padding="same", kernel_regularizer=regularizers.l2(1e-4), name="finger_conv2")(x2)
         x2 = layers.BatchNormalization(name="finger_bn2")(x2)
         x2 = layers.ReLU(name="finger_relu2")(x2)
         x2 = layers.GlobalAveragePooling1D(name="finger_gap")(x2)
@@ -120,7 +120,7 @@ def build_multi_branch_cnn(
         fused = branch_outputs[0]
 
     y = layers.Dense(64, activation="relu", name="classifier_dense")(fused)
-    y = layers.Dropout(0.3, name="classifier_dropout")(y)
+    y = layers.Dropout(0.5, name="classifier_dropout")(y)
     output = layers.Dense(num_classes, activation="softmax", name="softmax_output")(y)
 
     model = Model(inputs=inputs, outputs=output, name="late_fusion_cnn")
