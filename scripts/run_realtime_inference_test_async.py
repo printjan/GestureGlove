@@ -12,6 +12,7 @@ import time
 import argparse
 import platform
 import threading
+import contextlib
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -53,7 +54,11 @@ from data_fusion_project.control import (
     DryRunBackend,
     PyAutoGuiBackend,
 )
-from data_fusion_project.inference import AsynchronousDataGrabber
+from data_fusion_project.inference import (
+    AsynchronousDataGrabber,
+    TriggerDetector,
+    LivePerformanceEvaluator,
+)
 
 
 def parse_args():
@@ -102,6 +107,23 @@ def parse_args():
         type=float,
         default=None,
         help="Automated exit timeout in seconds (useful for headless verification)."
+    )
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Enable the objection-based live-performance evaluator (records TP/FP/FN via hotkeys)."
+    )
+    parser.add_argument(
+        "--objection-window",
+        type=float,
+        default=1.5,
+        help="Seconds a fired gesture waits for a correcting keypress before it counts as correct (default: 1.5)."
+    )
+    parser.add_argument(
+        "--eval-out",
+        type=str,
+        default=None,
+        help="Directory for the evaluation report (defaults to the resolved model session directory)."
     )
     return parser.parse_args()
 
@@ -317,6 +339,29 @@ def main():
     else:
         ui.warning("PowerPoint control active (DRY-RUN - shortcuts are only logged, no keys sent).")
 
+    # 3c. Build the objection-based live-performance evaluator (optional)
+    detector = None
+    evaluator = None
+    eval_out_dir = None
+    if args.evaluate:
+        detector = TriggerDetector(
+            confidence_threshold=args.threshold,
+            cooldown_s=args.cooldown,
+            require_release=True,
+        )
+        evaluator = LivePerformanceEvaluator(
+            classes,
+            objection_window_s=args.objection_window,
+            enable_fn=True,
+            session_meta={
+                "model_dir": str(model_dir),
+                "threshold": args.threshold,
+                "cooldown_s": args.cooldown,
+            },
+        )
+        eval_out_dir = Path(args.eval_out) if args.eval_out else model_dir
+        ui.success("Live-performance evaluation enabled (objection-based).")
+
     # 4. Resolve Device Ports & Initialize
     if args.simulate:
         class MockIMU:
@@ -430,45 +475,68 @@ def main():
         set_log_level("WARNING")
         
         ui.hr(title="Live Inference Active (Asynchronous)")
-        if dispatcher is not None:
+        if evaluator is not None:
+            ui.info("Evaluating live performance. Object to wrong fires via hotkeys; press [q] or Ctrl+C to finish.\n")
+            ui.box(evaluator.hotkey_legend(), title="Evaluation Hotkeys")
+        elif dispatcher is not None:
             ui.info("Perform gestures to control PowerPoint in real time. Press Ctrl+C to exit.\n")
         else:
             ui.info("Perform gestures to see real-time classifications. Press Ctrl+C to exit.\n")
-        
-        grabber.start()
-        
-        start_time_loop = time.time()
-        while True:
-            if args.timeout is not None and (time.time() - start_time_loop) > args.timeout:
-                ui.info(f"\nSimulated run timeout of {args.timeout}s reached. Exiting cleanly.")
-                break
-                
-            # Block up to 100ms for a new preprocessed frame
-            frame = grabber.get_newest_frame(block=True, timeout=0.1)
-            if frame is None:
-                continue
-                
-            X_wrist_scaled, X_finger_scaled = frame
-            
-            # Predict
-            preds = model.predict(
-                {"wrist_input": X_wrist_scaled, "finger_input": X_finger_scaled},
-                verbose=0
-            )
-            
-            pred_idx = np.argmax(preds[0])
-            prob = preds[0][pred_idx]
-            class_name = classes[pred_idx]
-            
-            # Display output
-            print_prediction(class_name, prob, args.threshold)
 
-            # Feed the prediction to the control dispatcher (de-bounced).
-            if dispatcher is not None:
-                fired_action = dispatcher.feed(class_name, prob)
-                if fired_action is not None:
-                    sys.stdout.write(f"\n\033[96m\033[1m  --> Action triggered: {fired_action}\033[0m\n")
-                    sys.stdout.flush()
+        grabber.start()
+
+        # Enter non-canonical keyboard mode only while evaluating, so objection keys are read live.
+        input_ctx = ui.non_blocking_input() if evaluator is not None else contextlib.nullcontext()
+        with input_ctx:
+            start_time_loop = time.time()
+            while True:
+                if args.timeout is not None and (time.time() - start_time_loop) > args.timeout:
+                    ui.info(f"\nSimulated run timeout of {args.timeout}s reached. Exiting cleanly.")
+                    break
+
+                # Drain objection keystrokes and commit expired fires every iteration (also while idle).
+                if evaluator is not None:
+                    key = ui.get_key()
+                    while key:
+                        evaluator.poll(key)
+                        key = ui.get_key()
+                    evaluator.tick()
+                    if evaluator.quit_requested:
+                        ui.info("\nEvaluation finished by user ([q]).")
+                        break
+
+                # Block up to 100ms for a new preprocessed frame
+                frame = grabber.get_newest_frame(block=True, timeout=0.1)
+                if frame is None:
+                    continue
+
+                X_wrist_scaled, X_finger_scaled = frame
+
+                # Predict
+                preds = model.predict(
+                    {"wrist_input": X_wrist_scaled, "finger_input": X_finger_scaled},
+                    verbose=0
+                )
+
+                pred_idx = np.argmax(preds[0])
+                prob = preds[0][pred_idx]
+                class_name = classes[pred_idx]
+
+                # Display output
+                print_prediction(class_name, prob, args.threshold)
+
+                # Feed the prediction to the live-performance evaluator (de-bounced fire events).
+                if evaluator is not None:
+                    event = detector.feed(class_name, prob)
+                    if event is not None:
+                        evaluator.on_fire(*event)
+
+                # Feed the prediction to the control dispatcher (de-bounced).
+                if dispatcher is not None:
+                    fired_action = dispatcher.feed(class_name, prob)
+                    if fired_action is not None:
+                        sys.stdout.write(f"\n\033[96m\033[1m  --> Action triggered: {fired_action}\033[0m\n")
+                        sys.stdout.flush()
 
     except KeyboardInterrupt:
         ui.info("\nExiting real-time inference loop...")
@@ -480,6 +548,11 @@ def main():
         imu1.stop()
         imu2.stop()
         ui.success("Sensors disconnected.")
+        if evaluator is not None:
+            try:
+                evaluator.finalize(eval_out_dir)
+            except Exception as e:
+                ui.error(f"Failed to finalize live evaluation: {e}")
 
 
 if __name__ == "__main__":
