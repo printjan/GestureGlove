@@ -1,0 +1,173 @@
+{
+    "session_meta": {
+        "model_dir": "models/early_fusion_single_branch_1d_cnn/training_session_2_20260701_223131",
+        "model_type": "early_fusion_cnn",
+        "threshold": 0.95,
+        "cooldown_s": 2.0,
+        "duration_s": 48.09,
+        "objection_window_s": 3.0,
+        "enable_fn": true,
+        "n_fire_events": 1,
+        "n_miss_events": 0
+    },
+    "totals": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "idle_false_triggers": 0
+    },
+    "per_class": {
+        "none": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": null,
+            "recall": null
+        },
+        "swipe_left": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": null,
+            "recall": null
+        },
+        "swipe_right": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": null,
+            "recall": null
+        },
+        "circle_cw": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": null,
+            "recall": null
+        },
+        "circle_ccw": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": null,
+            "recall": null
+        },
+        "fist": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 0,
+            "precision": 1.0,
+            "recall": 1.0
+        },
+        "jerk_down": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": null,
+            "recall": null
+        },
+        "jerk_up": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "precision": null,
+            "recall": null
+        }
+    },
+    "confusion_matrix": {
+        "labels": [
+            "none",
+            "swipe_left",
+            "swipe_right",
+            "circle_cw",
+            "circle_ccw",
+            "fist",
+            "jerk_down",
+            "jerk_up"
+        ],
+        "matrix": [
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        ]
+    }
+}
