@@ -78,9 +78,11 @@ In this architecture, all raw and processed channels are concatenated immediatel
 ### E. Regularization Details
 * **Batch Normalization:** Stabilizes training when dealing with varying amplitude ranges between different IMU devices.
 * **L2 Weight Regularization (`l2(1e-4)`):** Applied to the kernels of all Conv1D layers. This keeps weight coefficients small and smooth, preventing filters from memorizing high-frequency sensor noise while avoiding underfitting.
-
 ### F. Explicit 8-Class Modeling (Idle/None Class Inclusion)
-* **Justification:** Real-time powerpoint slide control requires a near-zero false-positive rate. Rather than thresholding a 7-class active gesture model, we model the `none`/idle state as an explicit 8th class. This secures the decision boundaries of active gestures against random daily movements (e.g., mouse usage, typing, resting hand positions).
+* **Justification:** Real-time PowerPoint slide control requires a near-zero false-positive rate. Rather than thresholding a 7-class active gesture model, we model the `none`/idle state as an explicit 8th class. This secures the decision boundaries of active gestures against random daily movements (e.g., mouse usage, typing, resting hand positions).
+* **Mathematical & Physical Rationale:** 
+  1. **Softmax Sum-to-One Saturation:** The Softmax activation function forces predicted probabilities to sum to 1.0. Under static rest (pure background noise), a 7-class model *must* distribute $100\%$ probability across the active gestures, forcing the prediction to skew towards a high-probability active label.
+  2. **Confident Extrapolation on Noise (OOD):** Deep neural networks tend to make highly confident predictions on Out-of-Distribution (OOD) input. Without an explicit `none` class, random movements (e.g., hand scratching) project into high-confidence regions of active gesture manifolds, causing false triggers. Option A (Explicit 8-class) establishes explicit latent boundaries, forcing background noise to map cleanly to `none`.
 
 ### G. Three-Tier Input Feature Configuration
 Based on our Random Forest Gini and Mutual Information feature audits, inputs are structured into three tiers:
@@ -92,28 +94,39 @@ Based on our Random Forest Gini and Mutual Information feature audits, inputs ar
 
 ## 4. Preprocessing & Augmentation Pipelines
 
-Developers must implement the following mathematical transformations in the training and inference pipelines:
+Developers must implement the following mathematical transformations and signal processing stages in the training and inference pipelines to ensure clean and synchronized inputs:
 
-### A. Static Calibration (Sensor Offset Removal)
+### A. Digital Signal Filtering (Butterworth Configuration)
+Raw IMU readings are noisy and subject to physiological micro-tremors (15–50 Hz). Before feature extraction, all signals must be pre-filtered using digital Butterworth filters (2nd order):
+*   **Low-Pass Filter (Jitter Suppression):** Clamped at a cutoff of **8.0 Hz** for accelerometers and **12.0 Hz** for gyroscopes. This preserves voluntary human movement (0.5 to 8.0 Hz) while stripping high-frequency noise.
+*   **High-Pass Filter (DC/Drift Removal):** Cutoff frequency set to **0.5 Hz** to remove the constant gravity vector and gyroscope temperature bias drift.
+
+### B. Phase Alignment & Group Delay Mitigation
+*   **Offline Training (Zero-Phase Filtering):** Implement bidirectional filtering (`scipy.signal.sosfiltfilt`) to run the Butterworth filter forward and backward. This eliminates phase shift, ensuring perfect synchronization between Wrist and Finger IMU channels during training.
+*   **Real-Time Inference (Causal Filtering):** At runtime, the stream cannot look into the future, and causal filters introduce a **group delay** (approximately 20–40 ms). To bridge this mismatch, training must include **random temporal jittering** (using the `jitter_range` parameter). Training the network on shifted windows forces it to become invariant to the causal phase delay introduced in production.
+
+### C. Static Calibration (Sensor Offset Removal)
 At system startup, the user holds their hand still for `6.0` seconds (600 samples). The pipeline computes the mean sensor readings and subtracts these baseline biases from all subsequent samples:
 $$\tilde{x}_t = x_t - \bar{x}_{calib}, \quad \text{where } \bar{x}_{calib} = \frac{1}{600}\sum_{i=1}^{600} x_i$$
 This active zeroing translates raw values into relative dynamic deltas, neutralizing the coordinate shift caused by arm-strap and finger-strap re-taping.
 
-### B. Dynamic 3D Random Rotation Augmentation
+### D. Dynamic Calibration Mapping (Thermal Drift Correction)
+To mitigate long-term sensor bias drift (thermal or sensor placement changes), the dataset logs multiple static calibrations inside `recording_session.json` under `"recalibrations"`. The dataset processing loader must dynamically map each gesture sequence to its **closest prior calibration index** rather than using a single session-wide startup baseline.
+
+### E. Dynamic 3D Random Rotation Augmentation
 To prevent the model from memorizing absolute sensor coordinates, raw $X, Y, Z$ vectors are rotated on-the-fly during training. For a given vector $v = [v_x, v_y, v_z]^T$:
 1. Sample a random unit rotation axis $k = [k_x, k_y, k_z]^T$ uniformly on a sphere.
 2. Sample a random rotation angle $\theta$ from the uniform distribution $[-\theta_{max}, \theta_{max}]$, where $\theta_{max}$ is configured by `--augment-rotation` (recommend `25` degrees).
 3. Apply **Rodrigues' rotation formula** to compute the rotated vector $v_{rot}$:
    $$v_{rot} = v \cos \theta + (k \times v) \sin \theta + k(k \cdot v)(1 - \cos \theta)$$
 
-### C. Temporal Jittering (Shift)
+### F. Temporal Jittering (Shift)
 During batch loading, raw training windows are dynamically shifted along the timeline by a random offset $s \in [-J, J]$, where $J$ is configured by `--jitter-range` (recommend `20` to `25` samples). This prevents the CNN from relying on absolute gesture alignments.
 
-### D. Input Standardization
+### G. Input Standardization
 Each channel is standardized using the mean $\mu$ and standard deviation $\sigma$ computed from the training split:
 $$x_{std} = \frac{x - \mu}{\sigma}$$
 Developers must serialize these scaling parameters during training and load them for online real-time normalization.
-
 ---
 
 ## 5. Training Pipeline & Hyperparameters
@@ -176,5 +189,21 @@ models/
         └── learning_curves.png                      # Training/validation loss and accuracy curves
 ```
 
-* **Sequential Indexing**: The training script must dynamically query existing directories under `models/early_fusion_single_branch_1d_cnn/` to determine the next available sequential integer `<index>` (starting at `0` for the first run).
-* **Metadata Logging**: The `model_metadata.json` file must capture system info, hyperparameters, training dataset stats, and per-class precision, recall, and F1-score evaluation metrics.
+* **Sequential Indexing**: The training script must dynamically query existing directories under `models/early_fusion_single_branch_1d_cnn/` to determine the next available sequential integer `<index>` (starting at `0` for the first run). Alternatively, an optional custom naming scheme (`training_session_<name>`) can be used as defined in [README.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/README.md).
+* **Single Scaler Serializer**: Because this is a single-branch architecture, all active features are normalized together. A single `StandardScaler` instance must be fit on the training features and saved to `scaler_x.joblib`.
+* **Metadata Logging**: The `model_metadata.json` file must strictly comply with the schema specified in [README.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/README.md#model-metadata-properties-structure-model_metadatajson). Because early fusion projects all features into a single sequence, the `wrist_channels` and `finger_channels` fields in `model_metadata.json` must be set to empty lists `[]`. All active features selected by Optuna must be stored in the `channels` array, and the active/inactive toggles tracked inside the `feature_toggles` map.
+
+---
+
+## 9. Pre-Training Data Quality Audits
+
+Before training, developers should use the following statistical and information-theoretic metrics on training data to estimate gesture separability and identify classification risks:
+
+1. **Distance Metrics & Silhouette Analysis (DTW):** Compute pairwise **Dynamic Time Warping (DTW)** distances between all sample sequences. For any two gesture classes $C_A$ and $C_B$, compute the **Fisher Separability Ratio**:
+   $$S(C_A, C_B) = \frac{\mu_{inter} - \mu_{intra}}{\sigma_{intra}}$$
+   Where $\mu_{inter}$ is the mean DTW distance between different classes, and $\mu_{intra}$ is the mean distance within the same class. A score of $S \ge 1.5$ indicates strong separability, whereas $S < 1.0$ indicates potential overlap and class confusion.
+2. **Jensen-Shannon (JS) Divergence:** Compute the JS divergence of signal distributions (e.g., peak gyroscope energy) between active gestures and the `none` class:
+   $$D_{JS}(P \parallel Q) = \frac{1}{2} D_{KL}(P \parallel M) + \frac{1}{2} D_{KL}(Q \parallel M), \quad \text{where } M = \frac{1}{2}(P + Q)$$
+   Target a JS divergence of $D_{JS} \ge 0.8$ from the `none` class to ensure voluntary gestures are highly distinct from resting sensor noise.
+3. **Dimensionality Reduction & Projection:** Flatten each 150-sample sequence into a single vector and project it using UMAP or t-SNE down to a 2D space. Verify that active gesture classes form isolated island clusters rather than overlapping with background idle points.
+4. **Shallow KNN/SVM Baselines:** Fit a lightweight 3-NN or linear SVM classifier on the dataset using Leave-One-Session-Out cross-validation. A poor baseline score (e.g. 39.6% accuracy due to coordinate drift) mathematically justifies the need for deep temporal architectures (CNN/Transformer) to capture invariant motion kinetics.

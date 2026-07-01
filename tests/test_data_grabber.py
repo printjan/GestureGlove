@@ -230,11 +230,103 @@ def test_grabber_blocking_behavior():
     print("Blocking behavior test PASSED.")
 
 
+def test_grabber_zupt_calibration_updates():
+    print("Testing ZUPT calibration background updates...")
+    imu1 = MockIMUInput("IMU1")
+    imu2 = MockIMUInput("IMU2")
+    imu1.start()
+    imu2.start()
+
+    config = PipelineConfig()
+    profile = identity_profile()
+
+    grabber = AsynchronousDataGrabber(
+        imu1=imu1,
+        imu2=imu2,
+        pipeline_config=config,
+        calibration_profile=profile,
+        window_size_samples=50,
+        advance_samples=5,
+        poll_interval_s=0.005,
+    )
+
+    # Initialize bias to zero
+    assert profile.get("IMU1").gyro_bias[0] == 0.0
+
+    grabber.start()
+
+    # Feed packets with a constant offset representing a drift (gyrX = 2.0 dps)
+    # Standard deviation is zero, so stillness holds.
+    start_time_us = int(time.time() * 1e6)
+    packets1 = []
+    packets2 = []
+    for i in range(60):
+        t = start_time_us + i * 10000
+        p1 = {
+            'sensor_id': "IMU1",
+            'pc_timestamp_us': t,
+            'esp_timestamp_us': t,
+            'imu_timestamp_ms': int(t / 1000),
+            'accX': 0.0, 'accY': 0.0, 'accZ': 1.0,
+            'gyrX': 2.0, 'gyrY': 0.0, 'gyrZ': 0.0,
+        }
+        p2 = {
+            'sensor_id': "IMU2",
+            'pc_timestamp_us': t,
+            'esp_timestamp_us': t,
+            'imu_timestamp_ms': int(t / 1000),
+            'accX': 0.0, 'accY': 0.0, 'accZ': 1.0,
+            'gyrX': 0.0, 'gyrY': 0.0, 'gyrZ': 0.0,
+        }
+        packets1.append(p1)
+        packets2.append(p2)
+
+    imu1.feed_packets(packets1)
+    imu2.feed_packets(packets2)
+
+    # Allow grabber to process
+    time.sleep(0.15)
+
+    # The bias should update towards 2.0 via EMA
+    # With beta=0.1, after one window update it should be > 0.0
+    assert profile.get("IMU1").gyro_bias[0] > 0.0, "ZUPT did not update gyro bias register"
+    assert profile.get("IMU1").gyro_bias[0] < 2.0, "Gyro bias updated too fast (should be smoothed by EMA)"
+
+    grabber.stop()
+
+    # Now verify ZUPT is disabled when enable_zupt=False
+    profile_disabled = identity_profile()
+    grabber_disabled = AsynchronousDataGrabber(
+        imu1=imu1,
+        imu2=imu2,
+        pipeline_config=config,
+        calibration_profile=profile_disabled,
+        window_size_samples=50,
+        advance_samples=5,
+        poll_interval_s=0.005,
+        enable_zupt=False,
+    )
+    grabber_disabled.start()
+
+    # Feed packets with the same offset
+    imu1.feed_packets(packets1)
+    imu2.feed_packets(packets2)
+
+    time.sleep(0.15)
+
+    # The bias should remain exactly 0.0
+    assert profile_disabled.get("IMU1").gyro_bias[0] == 0.0, "ZUPT updated bias even though it was disabled"
+
+    grabber_disabled.stop()
+    print("ZUPT updates test PASSED.")
+
+
 def run_all_tests():
     test_grabber_lifecycle()
     test_grabber_alignment_and_processing()
     test_grabber_health_monitoring()
     test_grabber_blocking_behavior()
+    test_grabber_zupt_calibration_updates()
     print("All tests completed successfully!")
 
 

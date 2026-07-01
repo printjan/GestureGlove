@@ -125,6 +125,11 @@ def parse_args():
         default=None,
         help="Directory for the evaluation report (defaults to the resolved model session directory)."
     )
+    parser.add_argument(
+        "--no-zupt",
+        action="store_true",
+        help="Disable background Zero-Velocity Updates (ZUPT) recalibration."
+    )
     return parser.parse_args()
 
 
@@ -467,7 +472,8 @@ def main():
             freq_hz=100.0,
             max_diff_us=10000,
             transform_fn=transform_fn,
-            poll_interval_s=0.01
+            poll_interval_s=0.01,
+            enable_zupt=not args.no_zupt
         )
         
         # Silence frequent background sync/packet logs during the streaming loop
