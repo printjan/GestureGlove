@@ -150,12 +150,11 @@ graph TD
     * `--optimize`: Flag to enable Optuna search optimization.
     * `--optuna-trials INT`: Number of optimization search runs (default: `20`).
     * `--optuna-epochs INT`: Training epochs executed per trial (default: `5`).
-* **Live Inference Script:** [run_realtime_inference_test.py](../../scripts/run_realtime_inference_test.py)
-  * **What it does:** Manages live stream readers from two serial ports, aligns and standardizes them in sliding windows, feeds them to the classifier model, and maps classified gestures to PowerPoint shortcut events.
+* **Live Inference Script:** [run_realtime_inference.py](../../scripts/run_realtime_inference.py) — The production inference pipeline supports all architectures including the playground model. See [Real-Time Inference Pipeline](../real_time_inference_pipeline.md) for full documentation.
   * **Primary Options:**
     * `--model-dir PATH`: Directory containing the model run. Automatically resolves to the latest session (e.g. `training_session_16_...`) if pointed to a base model directory.
-    * `--threshold FLOAT`: Gesture probability threshold (from `0.0` to `1.0`) required to trigger shortcut actions (default: `0.85`).
-    * `--cooldown FLOAT`: Time lock (seconds) following a trigger to prevent double execution (default: `1.5`).
+    * `--threshold FLOAT`: Gesture probability threshold (from `0.0` to `1.0`) required to trigger shortcut actions (default: `0.80`).
+    * `--cooldown FLOAT`: Time lock (seconds) following a trigger to prevent double execution (default: `1.0`).
     * `--simulate`: Starts two mock high-frequency IMU threads with synchronized monotonic wall-clock clocks to test headless code execution without hardware.
     * `--dry-run`: Intercepts key injections; prints PowerPoint shortcuts to the console rather than sending virtual keys.
     * `--timeout INT`: Maximum duration (seconds) to run the inference loop before exiting cleanly.
@@ -191,15 +190,17 @@ graph TD
 
 ### Real-Time Inference System
 
+The playground model can be run using the production [Real-Time Inference Pipeline](../real_time_inference_pipeline.md):
+
 #### **Live Mode (Physical Rigs):**
   ```bash
-  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
+  python scripts/run_realtime_inference.py --model-dir models/late_fusion_cnn_test --threshold 0.95
   ```
 
 #### **Simulated Dry-Run (No Hardware Needed):**
   Useful for quick offline verification and pipeline logic checks:
   ```bash
-  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
+  python scripts/run_realtime_inference.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --no-control --simulate --timeout 20
   ```
 
 ---

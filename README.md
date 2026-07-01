@@ -142,8 +142,7 @@ For detailed documentation on the project data structures and pipelines, please 
 
 ## Real Time Inference Pipeline
 
-- [Production Real-Time Inference Pipeline](documentation/real_time_inference_pipeline.md) — Architecture-agnostic inference pipeline supporting all three production architectures (Early Fusion CNN, Late Fusion CNN, Temporal Transformer) with model loader, scaler dispatch, and dynamic input routing.
-- [Playground Asynchronous Inference](documentation/asynchronous_real-time_inference.md) — Playground inference system for the `late_fusion_cnn_test` model, documenting the `AsynchronousDataGrabber`, ZUPT calibration, and live evaluation system.
+- [Real-Time Inference Pipeline](documentation/real_time_inference_pipeline.md) — Architecture-agnostic inference pipeline supporting all three production architectures with model loader, scaler dispatch, dynamic input routing, ZUPT calibration, and live evaluation.
 - [PowerPoint Control Interface](documentation/powerpoint_control_interface.md) — Specifications for the real-time presentation controller.
 
 ---

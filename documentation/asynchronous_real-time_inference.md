@@ -1,4 +1,6 @@
-# Real-Time Asynchronous Inference System
+# Real-Time Asynchronous Inference System (Playground)
+
+> **Note:** This document describes the original playground inference system for the `late_fusion_cnn_test` model. It has been superseded by the architecture-agnostic [Real-Time Inference Pipeline](real_time_inference_pipeline.md), which supports all production architectures. The playground model can now be run with `python scripts/run_realtime_inference.py --model-dir models/late_fusion_cnn_test`.
 
 To validate our model's robustness in a realistic scenario, we implement a real-time inference system that either ingests data from physical IMU sensors or simulates high-frequency input streams.
 

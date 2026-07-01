@@ -207,6 +207,8 @@ The real-time sliding window inference script must consume the trained model pac
 * **Calibration:** Subtract the baseline offsets computed during startup.
 * **Thresholding & Cooldown:** Gestures are dispatched only if the output Softmax probability exceeds a strict threshold (default `0.95` or `0.85` depending on noise environment). To prevent double execution of slides, a post-trigger cooldown lock (default `1.5` seconds) must be enforced.
 
+The production inference pipeline handles all of these constraints automatically. The model loader constructs an architecture-specific `transform_fn` (dual-branch wrist/finger channel splitting with independent scalers) and `predict_fn` (named-input dict `{"wrist_input": ..., "finger_input": ...}`). See [Real-Time Inference Pipeline](../real_time_inference_pipeline.md) for full documentation, startup commands, and the architecture dispatch table.
+
 ---
 
 ## 8. Experiment Directory & Saving Structure

@@ -1,19 +1,24 @@
-# Production Real-Time Inference Pipeline
+# Real-Time Inference Pipeline
 
-This document provides comprehensive documentation for the **architecture-agnostic production real-time inference pipeline** that runs live gesture classification using any trained model from the unified training pipeline. Unlike the [playground inference system](asynchronous_real-time_inference.md), which is hardcoded to the `late_fusion_cnn_test` architecture, this production pipeline dynamically detects the model architecture from `model_metadata.json` and dispatches all architecture-specific logic (model building, scaler loading, input routing) transparently.
+This document provides comprehensive documentation for the **architecture-agnostic real-time inference pipeline** that runs live gesture classification using any trained model from the [unified training pipeline](model_training_pipeline.md). The pipeline dynamically detects the model architecture from `model_metadata.json` and dispatches all architecture-specific logic (model building, scaler loading, input routing) transparently.
+
+Supported architectures:
+- [Early Fusion Single-Branch 1D CNN](model_architectures/early_fusion_single_branch_1d_cnn.md) — Single concatenated tensor, single scaler
+- [Late Fusion Multi-Branch 1D CNN](model_architectures/late_fusion_multi_branch_1d_cnn.md) — Independent wrist/finger branches, dual scalers
+- [Self-Attention Temporal Transformer](model_architectures/self_attention_temporal_transformer.md) — Attention-based, single scaler
 
 ## System Workflow
 
-The production real-time inference pipeline executes in the following sequence:
-1. **Model Loading & Architecture Detection:** Reads `model_metadata.json` from the specified model directory to discover the `model_type`, training configuration, channel lists, and scaler paths. Dispatches to the correct model builder and loads weights.
+The real-time inference pipeline executes in the following sequence:
+1. **Model Loading & Architecture Detection:** Reads `model_metadata.json` from the specified model directory to discover the `model_type`, training configuration, channel lists, and scaler paths. Dispatches to the correct model builder and loads weights. See [§ Architecture Dispatch Table](#2-architecture-dispatch-table) for details.
 2. **Sensor Ingestion:** Connects to dual-IMU serial ports (specified in `config/devices.yml`). Alternatively, starts high-frequency simulated streams when `--simulate` is enabled.
-3. **Static Calibration:** Prompts the user to hold still for 6.0 seconds. Computes the baseline offset and aligns sensor timestamps.
-4. **Asynchronous Slicing:** Asynchronously collects data, extracts sliding windows, and resamples/interpolates sensor signals via the `AsynchronousDataGrabber`.
+3. **Static Calibration:** Prompts the user to hold still for 6.0 seconds. Computes the baseline offset and aligns sensor timestamps. Calibration parameters are defined in [PipelineConfig](data_processing_pipeline.md).
+4. **Asynchronous Slicing:** Asynchronously collects data, extracts sliding windows, and resamples/interpolates sensor signals via the `AsynchronousDataGrabber`. See [§ Asynchronous Data Grabber](#7-asynchronous-data-grabber) for the producer-consumer threading architecture.
 5. **ZUPT Background Calibration:** Continuously monitors signal standard deviations in the background. If stillness is detected, it recalibrates the gyroscope bias registers on-the-fly via Exponential Moving Average (EMA).
 6. **Preprocessing & Pre-Prediction Transform:** Passes the calibrated sliding windows through the architecture-specific model transform callback (channel selection, scaling, and input routing).
 7. **Architecture-Agnostic Forward Pass:** Executes `predict_fn(frame)` which wraps `model.predict()` with the correct input format for the detected architecture.
 8. **Live Performance Evaluation (Optional):** If `--evaluate` is enabled, the pipeline detects gesture triggers and listens for user objections (corrective hotkeys) to record True Positives (TP), False Positives (FP), and False Negatives (FN).
-9. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](../config/powerpoint_control.yml) and fires key events to control the active PowerPoint window.
+9. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](../config/powerpoint_control.yml) and fires key events to control the active PowerPoint window. See [PowerPoint Control Interface](powerpoint_control_interface.md) for action mapping details.
 
 ---
 
@@ -73,26 +78,26 @@ This section documents the design, architecture, and implementation details of t
 
 ## 1. Motivation: Why Is It Needed?
 
-The original [playground inference script](asynchronous_real-time_inference.md) (`scripts/run_realtime_inference_test_async.py`) was hardcoded to the `late_fusion_cnn_test` architecture at four critical code locations:
+Each model architecture requires a different model builder, different scaler artifact(s), and a different `model.predict()` input format. The model loader encapsulates **all architecture-specific dispatch** behind a clean `InferenceBundle` interface, so that the inference script and all downstream consumers (the `AsynchronousDataGrabber`, the `GestureDispatcher`, the `LivePerformanceEvaluator`) remain completely architecture-agnostic.
 
-1. **Model Builder Import:** Directly imported `build_multi_branch_cnn` from the test package — completely unusable for Early Fusion CNN or Transformer architectures.
-2. **Scaler Class Import:** Imported `TimeSeriesScaler` from the test training module. The production models serialize scalers using the *pipeline* `TimeSeriesScaler` class (from `model_training_pipeline.pipeline`). Joblib deserialization requires the **exact same class** on the import path. Loading production scalers via the test import path causes a `ModuleNotFoundError` or `UnpicklingError`.
-3. **Transform Callback:** Hardcoded dual-branch `(wrist, finger)` tensor routing and dual scaler application. This is incorrect for the Early Fusion CNN and Temporal Transformer, which use a single `scaler_x.joblib` and a single concatenated tensor.
-4. **`model.predict()` Call:** Hardcoded dict input `{"wrist_input": ..., "finger_input": ...}`. Single-branch architectures expect a single `np.ndarray`, not a named-input dict.
-
-The `model_loader` module resolves this by encapsulating **all architecture-specific dispatch** behind a clean `InferenceBundle` interface, making the inference script and all downstream consumers completely architecture-agnostic.
+Without the model loader, every inference consumer would need to implement its own `if model_type == ...` branching — violating the single responsibility principle and making it impossible to add new architectures without modifying every consumer.
 
 ---
 
 ## 2. Architecture Dispatch Table
 
-The model loader uses the `model_type` field from `model_metadata.json` to dynamically dispatch to the correct builder, load the appropriate scalers, and construct the correct tensor routing and prediction closures.
+The model loader uses the `model_type` field from `model_metadata.json` (serialized by the [unified training pipeline](model_training_pipeline.md)) to dynamically dispatch to the correct builder, load the appropriate scalers, and construct the correct tensor routing and prediction closures.
 
-| `model_type` | Builder Function | Scaler Artifacts | `transform_fn` Behavior | `predict_fn` Input Format |
-|:---|:---|:---|:---|:---|
-| `early_fusion_cnn` | `build_early_fusion_cnn()` | `scaler_x.joblib` | Select `channels`, batch to `(1, T, C)`, scale via single `TimeSeriesScaler` | Single `np.ndarray` |
-| `late_fusion_cnn` | `build_late_fusion_cnn()` | `scaler_x_wrist.joblib` + `scaler_x_finger.joblib` + optional `scaler_feat.joblib` | Split by `wrist_channels` / `finger_channels`, batch, scale independently | Dict `{"wrist_input": ..., "finger_input": ...}` |
-| `temporal_transformer` | `build_temporal_transformer()` | `scaler_x.joblib` | Select `channels`, batch to `(1, T, C)`, scale via single `TimeSeriesScaler` | Single `np.ndarray` |
+| `model_type` | Builder Function | Source Module | Scaler Artifacts | `transform_fn` Behavior | `predict_fn` Input Format |
+|:---|:---|:---|:---|:---|:---|
+| `early_fusion_cnn` | `build_early_fusion_cnn()` | [model.py](../src/data_fusion_project/training/early_fusion_single_branch_1d_cnn/model.py) | `scaler_x.joblib` | Select `channels`, batch to `(1, T, C)`, scale via single `TimeSeriesScaler` | Single `np.ndarray` |
+| `late_fusion_cnn` | `build_late_fusion_cnn()` | [model.py](../src/data_fusion_project/training/late_fusion_multi_branch_1d_cnn/model.py) | `scaler_x_wrist.joblib` + `scaler_x_finger.joblib` + optional `scaler_feat.joblib` | Split by `wrist_channels` / `finger_channels`, batch, scale independently | Dict `{"wrist_input": ..., "finger_input": ...}` |
+| `temporal_transformer` | `build_temporal_transformer()` | [model.py](../src/data_fusion_project/training/self_attention_temporal_transformer/model.py) | `scaler_x.joblib` | Select `channels`, batch to `(1, T, C)`, scale via single `TimeSeriesScaler` | Single `np.ndarray` |
+
+The model builder functions, their parameters, and the architectural details of each model are documented in the respective architecture specification documents:
+- [Early Fusion Single-Branch 1D CNN](model_architectures/early_fusion_single_branch_1d_cnn.md)
+- [Late Fusion Multi-Branch 1D CNN](model_architectures/late_fusion_multi_branch_1d_cnn.md)
+- [Self-Attention Temporal Transformer](model_architectures/self_attention_temporal_transformer.md)
 
 ---
 
@@ -100,34 +105,34 @@ The model loader uses the `model_type` field from `model_metadata.json` to dynam
 
 ```mermaid
 flowchart TD
-    subgraph Model Loader (model_loader.py)
-        Meta[model_metadata.json] -->|read model_type| Dispatch{Architecture Dispatch}
+    subgraph Model Loader ["model_loader.py"]
+        Meta["model_metadata.json"] -->|read model_type| Dispatch{Architecture Dispatch}
         
-        Dispatch -->|early_fusion_cnn| EF[build_early_fusion_cnn]
-        Dispatch -->|late_fusion_cnn| LF[build_late_fusion_cnn]
-        Dispatch -->|temporal_transformer| TF[build_temporal_transformer]
+        Dispatch -->|early_fusion_cnn| EF["build_early_fusion_cnn()"]
+        Dispatch -->|late_fusion_cnn| LF["build_late_fusion_cnn()"]
+        Dispatch -->|temporal_transformer| TF["build_temporal_transformer()"]
         
-        EF --> Weights[Load model.weights.h5]
+        EF --> Weights["Load model.weights.h5"]
         LF --> Weights
         TF --> Weights
         
-        Dispatch -->|single-branch| SingleScaler[Load scaler_x.joblib]
-        Dispatch -->|late-fusion| DualScaler[Load scaler_x_wrist + scaler_x_finger]
+        Dispatch -->|single-branch| SingleScaler["Load scaler_x.joblib"]
+        Dispatch -->|late-fusion| DualScaler["Load scaler_x_wrist + scaler_x_finger"]
         
-        SingleScaler --> TransformFn[Build transform_fn closure]
+        SingleScaler --> TransformFn["Build transform_fn closure"]
         DualScaler --> TransformFn
         
-        Weights --> PredictFn[Build predict_fn closure]
+        Weights --> PredictFn["Build predict_fn closure"]
         
-        TransformFn --> Bundle[InferenceBundle]
+        TransformFn --> Bundle["InferenceBundle"]
         PredictFn --> Bundle
     end
 
-    subgraph Inference Script (run_realtime_inference.py)
-        Bundle -->|transform_fn| Grabber[AsynchronousDataGrabber]
-        Grabber -->|preprocessed frame| Predict[bundle.predict_fn]
-        Predict --> Dispatcher[GestureDispatcher]
-        Predict --> Evaluator[LivePerformanceEvaluator]
+    subgraph Inference Script ["run_realtime_inference.py"]
+        Bundle -->|transform_fn| Grabber["AsynchronousDataGrabber"]
+        Grabber -->|preprocessed frame| Predict["bundle.predict_fn"]
+        Predict --> Dispatcher["GestureDispatcher"]
+        Predict --> Evaluator["LivePerformanceEvaluator"]
     end
 ```
 
@@ -154,7 +159,7 @@ class InferenceBundle:
 
 ### Session Directory Auto-Resolution
 
-When the user passes a top-level model identifier directory (e.g., `models/early_fusion_single_branch_1d_cnn`), the loader automatically scans for `training_session_*` subdirectories and resolves to the one with the highest sequential index. This allows the user to point at the model family folder and always get the latest trained session.
+When the user passes a top-level model identifier directory (e.g., `models/early_fusion_single_branch_1d_cnn`), the loader automatically scans for `training_session_*` subdirectories and resolves to the one with the highest sequential index. This allows the user to point at the model family folder and always get the latest trained session. The session directory structure is defined in the [model training pipeline](model_training_pipeline.md).
 
 ### Scaler Class Path Alignment
 
@@ -167,11 +172,11 @@ from data_fusion_project.training.model_training_pipeline.pipeline import TimeSe
 
 ### Transformer Custom Layer Registration
 
-The Temporal Transformer architecture uses custom Keras `Layer` subclasses (`TransformerEncoderBlock`, `LearnablePositionalEncoding`). For `model.load_weights()` to correctly match weight names to layers, these custom classes must be importable in the current Python session. The model loader handles this by importing them explicitly when `model_type == "temporal_transformer"`.
+The [Temporal Transformer architecture](model_architectures/self_attention_temporal_transformer.md) uses custom Keras `Layer` subclasses (`TransformerEncoderBlock`, `LearnablePositionalEncoding`). For `model.load_weights()` to correctly match weight names to layers, these custom classes must be importable in the current Python session. The model loader handles this by importing them explicitly when `model_type == "temporal_transformer"`.
 
 ### PipelineConfig Reconstruction
 
-The `load_pipeline_config()` function reconstructs a `PipelineConfig` instance from the nested dictionary stored in `model_metadata.json["pipeline_config"]`. This includes deserializing enum types (`FilterType`, `OrientationMethod`) and reconstructing the four sub-config dataclasses (`CalibrationConfig`, `FilterConfig`, `OrientationConfig`, `FeatureConfig`). This function was previously inlined in the playground script and is now centralized in the model loader for reuse.
+The `load_pipeline_config()` function reconstructs a `PipelineConfig` instance from the nested dictionary stored in `model_metadata.json["pipeline_config"]`. This includes deserializing enum types (`FilterType`, `OrientationMethod`) and reconstructing the four sub-config dataclasses (`CalibrationConfig`, `FilterConfig`, `OrientationConfig`, `FeatureConfig`). The `PipelineConfig` schema is defined in the [data processing pipeline documentation](data_processing_pipeline.md).
 
 ### Transform Function Closures
 
@@ -221,43 +226,16 @@ The named input dict keys (`"wrist_input"`, `"finger_input"`, `"feat_input"`) ar
 
 | Decision | Rationale | Evidence Source |
 |:---|:---|:---|
-| `--model-dir` is a required argument (no default) | Production models span 3 architectures × 2 presets. Explicit model selection prevents accidentally running the wrong model | Playground experiments showed architecture-specific failure modes |
+| `--model-dir` is a required argument (no default) | Production models span 3 architectures × 2 presets. Explicit model selection prevents accidentally running the wrong model | [Model Training Strategies](model_training_strategies.md) |
 | `transform_fn` and `predict_fn` are closures, not methods | Closures capture the loaded scaler references and channel lists at construction time, avoiding repeated metadata lookups per frame | Performance: 10–30 Hz inference loop cannot tolerate per-frame dict accesses |
 | `TimeSeriesScaler` is imported even though not directly used | Joblib deserialization requires the class to be importable from the same module path used during training-time serialization | Python pickle module specification |
 | `predict_fn` reads `model.inputs` for named keys | Avoids hardcoding `"wrist_input"` / `"finger_input"` — future model builder changes (e.g., adding a third branch) are automatically supported | Separation of concerns: builder owns layer names, loader reads them |
-| Session auto-resolution picks highest index | Users typically want the latest training run. `training_session_2_*` is prioritized over `training_session_1_*` | Project convention from `model_training_pipeline.md` |
-| Playground script left completely untouched | Project convention: `late_fusion_cnn_test` is an isolated playground and must not be modified | `model_training_pipeline.md` directory structure |
+| Session auto-resolution picks highest index | Users typically want the latest training run. `training_session_2_*` is prioritized over `training_session_1_*` | [Model Training Pipeline](model_training_pipeline.md) session indexing convention |
 | Custom Keras layers imported for transformer | `model.load_weights()` requires matching layer classes; without the import, weight loading raises `ValueError: Unknown layer` | Keras serialization documentation |
 
 ---
 
-# Relationship Between Playground and Production Inference Pipelines
-
-The project maintains **two separate inference pipelines** that share the same async infrastructure but differ in architecture coupling:
-
-| Aspect | Playground Pipeline | Production Pipeline |
-|:---|:---|:---|
-| **Script** | `scripts/run_realtime_inference_test_async.py` | `scripts/run_realtime_inference.py` |
-| **Documentation** | [asynchronous_real-time_inference.md](asynchronous_real-time_inference.md) | This document |
-| **Supported Architectures** | `late_fusion_cnn_test` only (hardcoded) | All 3 production architectures (auto-detected) |
-| **Model Builder Import** | `build_multi_branch_cnn` from test package | Dynamic dispatch via `model_loader` |
-| **Scaler Class** | `TimeSeriesScaler` from test `train.py` | `TimeSeriesScaler` from `model_training_pipeline.pipeline` |
-| **Transform Callback** | Hardcoded dual-branch wrist/finger routing | Architecture-specific closure from `InferenceBundle` |
-| **`model.predict()` Format** | Hardcoded `{"wrist_input": ..., "finger_input": ...}` | Dynamic `predict_fn` closure |
-| **Default `--model-dir`** | `models/late_fusion_cnn_test` | Required argument (no default) |
-
-Both pipelines share these components **verbatim** (zero code duplication):
-- `AsynchronousDataGrabber` (producer-consumer threading)
-- `LivePerformanceEvaluator` (objection-based accuracy assessment)
-- `TriggerDetector` (de-bounced fire event detection)
-- `GestureDispatcher` + `PowerPointController` (action dispatch)
-- `MockIMU` (simulated sensor streams for dry-runs)
-- ZUPT background recalibration (gyroscope bias drift compensation)
-- Static calibration procedure (6-second stillness baseline)
-
----
-
-# CLI Reference
+## 6. CLI Reference
 
 ```
 python scripts/run_realtime_inference.py [options]
@@ -275,7 +253,7 @@ python scripts/run_realtime_inference.py [options]
 |:---|:---|:---|:---|
 | `--threshold` | float | `0.80` | Confidence threshold to trigger a gesture (0.0 to 1.0). |
 | `--cooldown` | float | `1.0` | Minimum seconds between two fired actions (de-bounce cool-down). |
-| `--config` | str | `config/powerpoint_control.yml` | Path to a PowerPoint control config file. |
+| `--config` | str | `config/powerpoint_control.yml` | Path to a [PowerPoint control config](powerpoint_control_interface.md) file. |
 | `--dry-run` | flag | `False` | Do not send real key presses; only log shortcuts. |
 | `--no-control` | flag | `False` | Disable PowerPoint control (predictions are only displayed). |
 
@@ -303,7 +281,41 @@ python scripts/run_realtime_inference.py [options]
 
 ---
 
-# API Reference
+## 7. Asynchronous Data Grabber
+
+The `AsynchronousDataGrabber` (`src/data_fusion_project/inference/data_grabber.py`) is the core component that decouples serial sensor ingestion from the model execution thread using a producer-consumer architecture.
+
+### Threading Model
+
+```mermaid
+flowchart LR
+    subgraph Producer Thread
+        IMU1[IMU1 Serial] --> Poll[Poll Loop]
+        IMU2[IMU2 Serial] --> Poll
+        Poll --> Sync[process_stream]
+        Sync --> PW[process_window]
+        PW --> TFN["transform_fn()"]
+        TFN --> Queue[Thread-Safe Queue]
+    end
+
+    subgraph Main Thread
+        Queue --> Frame["get_newest_frame()"]
+        Frame --> Predict["predict_fn()"]
+        Predict --> Display[Terminal Display]
+        Predict --> Dispatch[GestureDispatcher]
+    end
+```
+
+### Key Design Properties
+
+1. **Non-Blocking Producer:** The producer thread continuously polls both IMU serial streams at `poll_interval_s` (default 10 ms), synchronizes them via `process_stream`, runs the calibration/filtering/feature pipeline via `process_window`, and then applies the model's `transform_fn`. The processed frame is placed on a bounded queue.
+2. **Newest-Frame Semantics:** `get_newest_frame(block=True, timeout=0.1)` drains the queue and returns only the most recent frame, discarding stale frames. This prevents the prediction loop from falling behind the sensor stream.
+3. **ZUPT Integration:** The producer thread monitors the standard deviation of gyroscope channels. When sustained stillness is detected (duration exceeds `zupt_stillness_s`), the gyroscope bias registers are updated via EMA recalibration.
+4. **Architecture Agnosticism:** The grabber receives `transform_fn` as a constructor parameter and applies it blindly. It has no knowledge of the model architecture, scaler types, or input tensor format.
+
+---
+
+## 8. API Reference
 
 ### `load_inference_model()`
 ```python
@@ -333,11 +345,11 @@ def load_pipeline_config(
     metadata: dict,
 ) -> PipelineConfig:
 ```
-Reconstructs a `PipelineConfig` instance from the `"pipeline_config"` nested dictionary in `model_metadata.json`.
+Reconstructs a `PipelineConfig` instance from the `"pipeline_config"` nested dictionary in `model_metadata.json`. See the [data processing pipeline](data_processing_pipeline.md) documentation for the `PipelineConfig` schema.
 
 ---
 
-# Directory Structure
+## 9. Directory Structure
 
 ```
 src/data_fusion_project/inference/
@@ -348,6 +360,5 @@ src/data_fusion_project/inference/
 └── model_loader.py          # InferenceBundle, load_inference_model, load_pipeline_config
 
 scripts/
-├── run_realtime_inference.py            # Production inference (architecture-agnostic)
-└── run_realtime_inference_test_async.py # Playground inference (late_fusion_cnn_test only)
+└── run_realtime_inference.py  # Production inference entry point (architecture-agnostic)
 ```

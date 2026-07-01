@@ -239,4 +239,4 @@ The command-line interfaces for both `scripts/train_test_cnn.py` and `scripts/bu
 * `--gyro-magnitude`: Include low-pass filtered gyroscope magnitude.
 * `--gravity-free-acc`: Include gravity-free linear acceleration projected by roll/pitch.
 
-Live inference pipelines (`run_realtime_inference_test.py`) read these configurations dynamically from the model's `model_metadata.json` and adjust online feature extraction automatically.
+Live inference pipelines ([run_realtime_inference.py](../scripts/run_realtime_inference.py)) read these configurations dynamically from the model's `model_metadata.json` and adjust online feature extraction automatically. See [Real-Time Inference Pipeline](real_time_inference_pipeline.md) for details.

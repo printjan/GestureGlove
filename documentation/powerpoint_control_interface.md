@@ -148,5 +148,4 @@ dispatcher = GestureDispatcher(PowerPointController(backend=PyAutoGuiBackend()))
 dispatcher.feed(class_name, prob)   # fires the bound action when conditions are met
 ```
 
-Until that line is added to `scripts/run_realtime_inference_test.py`, the interface stays
-fully decoupled from the network.
+The `GestureDispatcher` is integrated into the production inference script [run_realtime_inference.py](../scripts/run_realtime_inference.py). See [Real-Time Inference Pipeline](real_time_inference_pipeline.md) for usage details.
