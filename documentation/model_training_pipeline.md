@@ -51,16 +51,28 @@ scripts/
 ├── train.py                                 # Unified CLI entry point
 └── train_test_cnn.py                        # Existing playground CLI (untouched)
 ```
+**Key source files:**
+
+| Module | Source File |
+|:---|:---|
+| Training pipeline | [pipeline.py](../src/data_fusion_project/training/model_training_pipeline/pipeline.py) |
+| Jitter generator | [generator.py](../src/data_fusion_project/training/model_training_pipeline/generator.py) |
+| Rotation augmentation | [augmentation.py](../src/data_fusion_project/training/model_training_pipeline/augmentation.py) |
+| Early Fusion builder | [model.py](../src/data_fusion_project/training/early_fusion_single_branch_1d_cnn/model.py) |
+| Late Fusion builder | [model.py](../src/data_fusion_project/training/late_fusion_multi_branch_1d_cnn/model.py) |
+| Transformer builder | [model.py](../src/data_fusion_project/training/self_attention_temporal_transformer/model.py) |
+| Unified CLI entry point | [train.py](../scripts/train.py) |
+| Playground CLI | [train_test_cnn.py](../scripts/train_test_cnn.py) |
 
 ### Separation of Concerns
 
 | Module | Responsibility |
 |:---|:---|
 | `model.py` (per architecture) | Layer graph construction only. No data loading, splitting, or scaling. |
-| `pipeline.py` | Data splitting, scaling, model dispatch, training loop, evaluation, artifact saving |
-| `generator.py` | On-the-fly temporal jitter slicing and rotation augmentation |
-| `augmentation.py` | Rodrigues' rotation matrix generation and IMU coordinate group detection |
-| `scripts/train.py` | CLI argument parsing, Optuna orchestration, user-facing output |
+| [pipeline.py](../src/data_fusion_project/training/model_training_pipeline/pipeline.py) | Data splitting, scaling, model dispatch, training loop, evaluation, artifact saving |
+| [generator.py](../src/data_fusion_project/training/model_training_pipeline/generator.py) | On-the-fly temporal jitter slicing and rotation augmentation |
+| [augmentation.py](../src/data_fusion_project/training/model_training_pipeline/augmentation.py) | Rodrigues' rotation matrix generation and IMU coordinate group detection |
+| [train.py](../scripts/train.py) | CLI argument parsing, Optuna orchestration, user-facing output |
 
 ---
 
@@ -228,7 +240,7 @@ See [Output Artifacts](#output-artifacts) section.
 
 ### The Problem
 
-The data processing pipeline (`dataset.py`) applies **static jitter**: a single random temporal offset is drawn once during `load_dataset()` and frozen for the entire training run. Every epoch sees the identical 150-sample window.
+The data processing pipeline ([dataset.py](../src/data_fusion_project/processing/dataset.py)) applies **static jitter**: a single random temporal offset is drawn once during `load_dataset()` and frozen for the entire training run. Every epoch sees the identical 150-sample window.
 
 During real-time inference, however, causal Butterworth filters introduce a 20–40 ms group delay that shifts the gesture peak relative to the window center. A model trained only on perfectly centered windows may fail to trigger because the peak is shifted.
 
@@ -285,7 +297,7 @@ python scripts/train.py --augment-rotation 25.0
 
 ### Feature Categories
 
-Based on the data quality audit (Random Forest Gini importance + Mutual Information), all 37 candidate features are categorized:
+Based on the [data quality audit](../data_analysis/data_analysis_data_v2/data_quality_audit.ipynb) (Random Forest Gini importance + Mutual Information), all 37 candidate features are categorized:
 
 | Category | Count | Selection | Criteria |
 |:---|:---|:---|:---|
@@ -854,9 +866,9 @@ python scripts/train.py \
 
 | Decision | Rationale | Evidence Source |
 |:---|:---|:---|
-| `dense_units=16` default (not 64) | Classifier bottlenecking prevents session-specific memorization | Test model Experiment D |
-| `epochs=70` default | Compact models need ≥50 epochs before convergence | Test model Experiment 7 |
-| `patience=20` for EarlyStopping | Prevents premature halting on class-skewed validation | Test model Experiment 3 |
+| `dense_units=16` default (not 64) | Classifier bottlenecking prevents session-specific memorization | [Playground Experiments](model_architectures/playground_model_experiments.md) |
+| `epochs=70` default | Compact models need ≥50 epochs before convergence | [Playground Experiments](model_architectures/playground_model_experiments.md) |
+| `patience=20` for EarlyStopping | Prevents premature halting on class-skewed validation | [Playground Experiments](model_architectures/playground_model_experiments.md) |
 | Always compute MLP features for late fusion | Scalar features (cross-correlation, statistics) carry complementary information for the late fusion architecture | User design decision |
 | Balanced LSO auto-detection | V4 dataset uses `test_data`/`validation_data` naming to guarantee all 8 classes appear in every partition | Test model Experiments 3-6 |
 | Per-sample rotation augmentation | Maximizes the diversity of sensor orientations seen during training | Architecture spec §3 |

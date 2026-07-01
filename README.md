@@ -118,6 +118,7 @@ For detailed documentation on the project data structures and pipelines, please 
 ## Data Recording Pipeline
 
 - [Data Recording Pipeline Documentation](documentation/data_recording_pipeline.md) — Details on the asynchronous multi-threaded data acquisition, hidden buffering, and grid resampling.
+- [Dataset Analysis Notebook](data_analysis/dataset_analysis.ipynb) — Interactive Jupyter notebook providing comparative visualizations of dataset versions, class balance analysis, session density distributions, calibration frequency audits, centroid start index histograms, and motion energy centering case studies.
 
 ---
 

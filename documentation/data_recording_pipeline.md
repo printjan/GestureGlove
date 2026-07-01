@@ -2,6 +2,8 @@
 
 This document describes the design and implementation of the dual-IMU data recording pipeline, specifically detailing threading, hidden buffering, synchronization, and dynamic gesture centering.
 
+For an interactive exploratory analysis of the recorded datasets (class distributions, session density, calibration frequency, centroid index distributions, and motion energy case studies), see the [Dataset Analysis Notebook](../data_analysis/dataset_analysis.ipynb).
+
 ---
 
 ## 1. System Architecture
@@ -95,7 +97,7 @@ graph TD
     Q2 -- get_data() --> MT
 ```
 
-* **`IMUDataInput` (`src/data_fusion_project/recording/input_data.py`):** Manages a background daemon thread (`_read_loop`) executing blocking serial reads. 
+* **`IMUDataInput` ([input_data.py](../src/data_fusion_project/recording/input_data.py)):** Manages a background daemon thread (`_read_loop`) executing blocking serial reads. 
 * **Buffering:** Parsed incoming packets are pushed to a thread-safe `queue.Queue()`. 
 * **Decoupled Main Loop:** The main thread retrieves accumulated packets using non-blocking `get_data()` drains, separating serial I/O scheduling from the progress bar timers.
 
@@ -170,7 +172,7 @@ To ensure that only high-quality data is recorded, the pipeline aborts immediate
 * **Datapoint Strict Validation**: Prior to writing the synchronized DataFrame to a `.csv` file, the pipeline verifies that the sample has at least the target number of datapoints (150). Any mismatch immediately raises an error and aborts.
 * **Sync Check**: If the nearest-neighbor discrepancy exceeds $10\text{ ms}$ inside the centered window, the session aborts.
 * **Disconnect Monitoring**: The main thread monitors the states of `control_thread`, `imu1.running`, and `imu2.running`. If a thread terminates or a serial read raises an exception, the script immediately propagates the failure, logs an `ERROR`, and exits with `exit code 1`.
-* **Offline Sample Auditing**: The [check_samples.py](../scripts/check_samples.py) script scans the data directory recursively. It enforces that each sample file has its companion `.txt` file and that slicing the CSV at the start index results in exactly 150 rows.
+* **Offline Sample Auditing**: The [check_samples.py](../tests/check_samples.py) script scans the data directory recursively. It enforces that each sample file has its companion `.txt` file and that slicing the CSV at the start index results in exactly 150 rows.
 
 ---
 
@@ -184,7 +186,7 @@ To limit sensor/gyroscope bias drift within a session, the pipeline automaticall
 * **Energy Distribution Plots**: 
   - `centered_energy_distribution_<number>.png`: Displays the mean and standard deviation of the centered 150-sample gesture windows in this block.
   - `overall_energy_distribution_<number>.png`: Displays the mean and standard deviation over the full 1.74-second raw segments, with vertical black dashed lines marking where the average start and end gesture bounds fall.
-* **Calibration Quality Analysis**: The offline Jupyter Notebook `scripts/analyze_calibration_data.ipynb` audits stillness quality (detecting and flagging movement by analyzing standard deviation thresholds) and tracks zero-bias drift profiles across multiple calibrations within each recording session.
+* **Calibration Quality Analysis**: The offline [Calibration Quality Analysis Notebook](../data_analysis/data_analysis_data_v2/analyze_calibration_quality.ipynb) audits stillness quality (detecting and flagging movement by analyzing standard deviation thresholds) and tracks zero-bias drift profiles across multiple calibrations within each recording session.
 
 ---
 
@@ -199,7 +201,7 @@ To limit sensor/gyroscope bias drift within a session, the pipeline automaticall
   We can then compare their validation confusion matrices and confidence scores to resolve whether translation invariance stabilizes or degrades class boundaries.
 
 ### Downstream Adaptation to Variable Session Buffers
-* **Compatibility:** Our downstream processing workers (e.g., `dataset.py`, `check_samples.py`, and analysis notebooks) are fully decoupled from the overall recording length. Because they look up the start index from the companion `.txt` file and slice exactly `window_size` (150) samples, they naturally cope with different `pre_buffer_s` and `post_buffer_s` configurations across different recording sessions. This permits adjusting the buffers dynamically in the future without breaking any historical compatibility.
+* **Compatibility:** Our downstream processing workers (e.g., [dataset.py](../src/data_fusion_project/processing/dataset.py), [check_samples.py](../tests/check_samples.py), and analysis notebooks) are fully decoupled from the overall recording length. Because they look up the start index from the companion `.txt` file and slice exactly `window_size` (150) samples, they naturally cope with different `pre_buffer_s` and `post_buffer_s` configurations across different recording sessions. This permits adjusting the buffers dynamically in the future without breaking any historical compatibility.
 
 ---
 
