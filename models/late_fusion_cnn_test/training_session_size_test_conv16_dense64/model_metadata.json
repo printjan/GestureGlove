@@ -1,0 +1,329 @@
+{
+  "timestamp": "training_session_size_test_conv16_dense64",
+  "model_name": "late_fusion_cnn_test",
+  "training_duration_s": 15.661021947860718,
+  "epochs_trained": 35,
+  "classes": [
+    "none",
+    "swipe_left",
+    "swipe_right",
+    "circle_cw",
+    "circle_ccw",
+    "fist",
+    "jerk_down",
+    "jerk_up"
+  ],
+  "channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag",
+    "IMU1_gyrZ",
+    "IMU1_acc_mag",
+    "IMU1_linear_jerkY",
+    "IMU2_gyrY",
+    "IMU2_gyrZ",
+    "IMU2_relative_yaw",
+    "IMU2_linear_jerkX",
+    "IMU2_linear_jerkY",
+    "IMU2_angular_accelerationX",
+    "diff_gyrX",
+    "diff_gyrZ"
+  ],
+  "wrist_channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU1_gyr_mag",
+    "IMU1_gyrZ",
+    "IMU1_acc_mag",
+    "IMU1_linear_jerkY"
+  ],
+  "finger_channels": [
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
+    "IMU2_gyrY",
+    "IMU2_gyrZ",
+    "IMU2_relative_yaw",
+    "IMU2_linear_jerkX",
+    "IMU2_linear_jerkY",
+    "IMU2_angular_accelerationX",
+    "diff_gyrX",
+    "diff_gyrZ"
+  ],
+  "feature_names": [],
+  "feature_toggles": {
+    "IMU1_linear_jerkX": false,
+    "IMU1_linear_jerkZ": false,
+    "IMU2_linear_jerkZ": false,
+    "IMU1_angular_accelerationY": false,
+    "IMU1_angular_accelerationZ": false,
+    "IMU2_angular_accelerationY": false,
+    "IMU1_accX": true,
+    "IMU1_accZ": true,
+    "IMU1_gyrX": true,
+    "IMU1_pitch": true,
+    "IMU2_accX": true,
+    "IMU2_accY": true,
+    "IMU2_accZ": true,
+    "IMU2_gyrX": true,
+    "diff_accX": true,
+    "diff_accZ": true,
+    "IMU1_gyr_mag": true,
+    "IMU1_accY": false,
+    "IMU1_gyrY": false,
+    "IMU1_gyrZ": true,
+    "IMU1_acc_mag": true,
+    "IMU1_roll": false,
+    "IMU1_relative_yaw": false,
+    "IMU1_linear_jerkY": true,
+    "IMU1_angular_accelerationX": false,
+    "IMU2_gyrY": true,
+    "IMU2_gyrZ": true,
+    "IMU2_gyr_mag": false,
+    "IMU2_acc_mag": false,
+    "IMU2_relative_yaw": true,
+    "IMU2_linear_jerkX": true,
+    "IMU2_linear_jerkY": true,
+    "IMU2_angular_accelerationX": true,
+    "IMU2_angular_accelerationZ": false,
+    "diff_accY": false,
+    "diff_gyrX": true,
+    "diff_gyrY": false,
+    "diff_gyrZ": true
+  },
+  "machine_info": {
+    "hostname": "MacBook-Pro.fritz.box",
+    "os": "Darwin-25.5.0",
+    "cpu": "arm",
+    "gpu": "MPS",
+    "ram_gb": 64.0
+  },
+  "training_parameters": {
+    "epochs": 70,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "split_type": "chronological",
+    "test_fraction": 0.27,
+    "val_fraction": 0.15,
+    "seed": 42,
+    "augment_rotation": 25.0,
+    "jitter_range": 25,
+    "sessions_used": [
+      "#",
+      "session_1782600797",
+      "session_1782663416",
+      "session_1782663628",
+      "session_1782676777",
+      "session_1782679027",
+      "session_1782751360",
+      "session_1782751666",
+      "session_1782829539",
+      "session_1782829902",
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831291",
+      "session_1782831658",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444",
+      "session_1782846877"
+    ],
+    "conv_filters": [
+      16
+    ],
+    "dense_units": 64
+  },
+  "split_info": {
+    "strategy": "chronological",
+    "train_sessions": [
+      "#",
+      "session_1782600797",
+      "session_1782663416",
+      "session_1782663628",
+      "session_1782676777",
+      "session_1782679027",
+      "session_1782751360",
+      "session_1782751666",
+      "session_1782829539",
+      "session_1782829902",
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831291",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444"
+    ],
+    "val_sessions": [
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831291",
+      "session_1782831658",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444"
+    ],
+    "test_sessions": [
+      "session_1782830502",
+      "session_1782830800",
+      "session_1782831658",
+      "session_1782845000",
+      "session_1782845304",
+      "session_1782845686",
+      "session_1782846044",
+      "session_1782846444",
+      "session_1782846877"
+    ]
+  },
+  "performance": {
+    "best_epoch": 15,
+    "train_accuracy": 0.9807692170143127,
+    "train_loss": 0.10453785955905914,
+    "val_accuracy": 0.9322034120559692,
+    "val_loss": 0.23842912912368774,
+    "val_f1_score": 0.9689012043253975
+  },
+  "evaluation": {
+    "accuracy": 0.9626168224299065,
+    "macro_avg": {
+      "precision": 0.9539959394610558,
+      "recall": 0.9864864864864865,
+      "f1-score": 0.9689012043253975,
+      "support": 428.0
+    },
+    "weighted_avg": {
+      "precision": 0.9656044407185465,
+      "recall": 0.9626168224299065,
+      "f1-score": 0.9623293383474266,
+      "support": 428.0
+    },
+    "per_class_metrics": {
+      "none": {
+        "precision": 1.0,
+        "recall": 0.8918918918918919,
+        "f1-score": 0.9428571428571428,
+        "support": 148.0
+      },
+      "swipe_left": {
+        "precision": 0.9302325581395349,
+        "recall": 1.0,
+        "f1-score": 0.963855421686747,
+        "support": 40.0
+      },
+      "swipe_right": {
+        "precision": 0.8888888888888888,
+        "recall": 1.0,
+        "f1-score": 0.9411764705882353,
+        "support": 40.0
+      },
+      "circle_cw": {
+        "precision": 0.9302325581395349,
+        "recall": 1.0,
+        "f1-score": 0.963855421686747,
+        "support": 40.0
+      },
+      "circle_ccw": {
+        "precision": 0.9302325581395349,
+        "recall": 1.0,
+        "f1-score": 0.963855421686747,
+        "support": 40.0
+      },
+      "fist": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 40.0
+      },
+      "jerk_down": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 40.0
+      },
+      "jerk_up": {
+        "precision": 0.9523809523809523,
+        "recall": 1.0,
+        "f1-score": 0.975609756097561,
+        "support": 40.0
+      }
+    }
+  },
+  "pipeline_config": {
+    "sample_rate_hz": 100.0,
+    "window_size": 150,
+    "pad_mode": "edge",
+    "jitter_range": 25,
+    "calibration": {
+      "enabled": true,
+      "remove_gyro_bias": true,
+      "normalize_acc_to_g": true,
+      "remove_acc_bias": false,
+      "anchor_samples": 0
+    },
+    "filters": {
+      "enabled": true,
+      "acc_filter": "lowpass",
+      "acc_cutoff_hz": 8.0,
+      "gyro_filter": "lowpass",
+      "gyro_cutoff_hz": 12.0,
+      "order": 2,
+      "remove_gravity": false,
+      "gravity_cutoff_hz": 0.5,
+      "replace_acc_with_linear": false
+    },
+    "orientation": {
+      "enabled": true,
+      "method": "complementary",
+      "imus": [
+        "IMU1",
+        "IMU2"
+      ],
+      "alpha": 0.98,
+      "degrees": true,
+      "kalman_q_angle": 0.001,
+      "kalman_q_bias": 0.003,
+      "kalman_r_measure": 0.03
+    },
+    "features": {
+      "imus": [
+        "IMU1",
+        "IMU2"
+      ],
+      "include_acc": true,
+      "include_gyro": true,
+      "include_acc_magnitude": true,
+      "include_gyro_magnitude": true,
+      "include_diff_acc": true,
+      "include_diff_gyro": true,
+      "include_orientation": true,
+      "cross_correlation": false,
+      "statistics": false,
+      "include_linear_jerk": true,
+      "include_angular_acceleration": true,
+      "include_relative_acceleration": false,
+      "include_relative_rotation": false,
+      "include_relative_yaw": true,
+      "include_accelerometer_magnitude": false,
+      "include_gyroscope_magnitude": false,
+      "include_gravity_free_linear_acceleration": true
+    }
+  }
+}

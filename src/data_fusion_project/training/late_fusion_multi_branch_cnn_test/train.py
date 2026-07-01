@@ -332,7 +332,9 @@ def train_model(
     timestamp: str | None = None,
     seed: int = 42,
     augment_rotation: float = 0.0,
-    feature_toggles: dict[str, bool] | None = None
+    feature_toggles: dict[str, bool] | None = None,
+    conv_filters: list[int] = [32, 64],
+    dense_units: int = 64
 ) -> tuple[keras.Model, dict, dict]:
     """
     Executes the training and evaluation loop.
@@ -453,7 +455,9 @@ def train_model(
         input_shape_wrist=shape_wrist,
         input_shape_finger=shape_finger,
         num_classes=n_classes,
-        input_shape_feat=shape_feat
+        input_shape_feat=shape_feat,
+        conv_filters=conv_filters,
+        dense_units=dense_units
     )
     
     model.compile(
@@ -575,7 +579,9 @@ def train_model(
                 "seed": seed,
                 "augment_rotation": augment_rotation,
                 "jitter_range": ds.config.jitter_range if ds.config else 0,
-                "sessions_used": [str(s) for s in sessions_used]
+                "sessions_used": [str(s) for s in sessions_used],
+                "conv_filters": conv_filters,
+                "dense_units": dense_units
             },
             "split_info": {
                 "strategy": split_type,

@@ -115,6 +115,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42, help="Random split seed.")
     p.add_argument("--augment-rotation", type=float, default=0.0,
                    help="Maximum random 3D rotation angle in degrees for IMU data augmentation (default: 0.0, disabled).")
+    p.add_argument("--conv-filters", type=int, nargs="+", default=[32, 64],
+                   help="List of Conv1D filters per layer (default: 32 64).")
+    p.add_argument("--dense-units", type=int, default=64,
+                   help="Number of classification dense neurons (default: 64).")
     
     # Bayesian dynamic feature optimization
     p.add_argument("--optimize", action="store_true", help="Enable Bayesian optimization of dynamic features using Optuna.")
@@ -286,7 +290,9 @@ def main(argv=None) -> int:
                     model_name=None, # do not save trial folders
                     seed=args.seed,
                     augment_rotation=args.augment_rotation,
-                    feature_toggles=toggles
+                    feature_toggles=toggles,
+                    conv_filters=args.conv_filters,
+                    dense_units=args.dense_units
                 )
                 
                 f1 = float(report["macro avg"]["f1-score"])
@@ -356,7 +362,9 @@ def main(argv=None) -> int:
         timestamp=timestamp,
         seed=args.seed,
         augment_rotation=args.augment_rotation,
-        feature_toggles=feature_toggles
+        feature_toggles=feature_toggles,
+        conv_filters=args.conv_filters,
+        dense_units=args.dense_units
     )
     
     # Print metrics summary
