@@ -366,9 +366,19 @@ def train_model(
     
     # 2. Train/Val/Test indices split
     if split_type in ("leave_session_out", "leave-session-out"):
-        train_idx, val_idx, test_idx = leave_sessions_out_three_way(
-            ds.groups, test_fraction=test_fraction, val_fraction=val_fraction, seed=seed
-        )
+        # Check if we have manually defined test_data and validation_data sessions
+        has_manual_splits = any("test_data" in str(g) for g in ds.groups) and any("validation_data" in str(g) for g in ds.groups)
+        if has_manual_splits:
+            logger.info("Detected balanced custom test_data and validation_data sessions. Using balanced manual split.")
+            test_mask = np.array(["test_data" in str(g) for g in ds.groups])
+            val_mask = np.array(["validation_data" in str(g) for g in ds.groups])
+            test_idx = np.where(test_mask)[0]
+            val_idx = np.where(val_mask)[0]
+            train_idx = np.where(~test_mask & ~val_mask)[0]
+        else:
+            train_idx, val_idx, test_idx = leave_sessions_out_three_way(
+                ds.groups, test_fraction=test_fraction, val_fraction=val_fraction, seed=seed
+            )
     elif split_type == "chronological":
         train_idx, val_idx, test_idx = chronological_split_three_way(
             ds.y, test_fraction=test_fraction, val_fraction=val_fraction
