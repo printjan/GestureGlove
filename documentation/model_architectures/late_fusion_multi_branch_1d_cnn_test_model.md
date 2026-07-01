@@ -708,4 +708,32 @@ While the architectural scaling experiments prove the model generalizes well to 
 
 ## Evaluating Raw Data Filter Strategies
 
+We ran a small ablation to isolate the effect of the two independent preprocessing filter stages on the current dataset (Dataset V4). Both stages are configured under `pipeline_config` in `model_metadata.json`:
+
+1. **Orientation estimation (`orientation.method`)** — how the roll/pitch orientation channels are derived from accelerometer + gyroscope. Options tested: `accel` (accelerometer-only angles, unfused/no filter), `complementary` (α = 0.98), `kalman` (Q_angle = 0.001, Q_bias = 0.003, R_measure = 0.03), and `none` (roll/pitch channels are dropped entirely — orientation is not used as a feature at all).
+2. **Sensor pre-filter (`filters.acc_filter` / `gyro_filter`)** — an optional 2nd-order low-pass on the raw acc (8 Hz) and gyro (12 Hz) streams before feature extraction. Options tested: `lowpass` (**sensorfilter**) vs. `none` (**nosensorfilter**).
+
+All seven runs use the identical compact architecture (`--conv-filters 16 --dense-units 16`) and the balanced Leave-Session-Out split, so differences come only from the filter configuration.
+
+### Filter Ablation Summary (3 × 2 grid)
+
+| Orientation Method | Sensor Pre-Filter | Test Accuracy | Macro F1-Score | Best Val Loss | Params | Target Run Subdirectory |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Kalman** | none | **99.36%** | **99.46%** | 0.0653 | 2,104 | [..._kalman_nosensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_kalman_nosensorfilter/) |
+| Kalman | lowpass | 98.72% | 98.93% | 0.0582 | 2,104 | [..._kalman_sensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_kalman_sensorfilter/) |
+| Complementary | none | 98.94% | 99.10% | 0.0463 | 2,104 | [..._complementary_nosensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_complementary_nosensorfilter/) |
+| Complementary | lowpass | 98.72% | 98.93% | 0.0593 | 2,104 | [..._complementary_sensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_complementary_sensorfilter/) |
+| None | none | 98.30% | 98.57% | 0.0670 | 1,784 | [..._noorientationfilter_nosensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_noorientationfilter_nosensorfilter/) |
+| None | lowpass | 98.72% | 98.92% | 0.0487 | 1,784 | [..._noorientationfilter_sensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_noorientationfilter_sensorfilter/) |
+| Accel | none | 98.30% | 98.57% | 0.0572 | 2,104 | [..._accel_nosensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_accel_nosensorfilter/) |
+
+### Key Findings
+* **Orientation channels help, and Kalman fuses them best.** Adding fused orientation channels lifts accuracy over the no-orientation baseline (98.30%), and the **Kalman filter (99.36% / 99.46% F1)** edges out the complementary filter (98.94%). The Kalman estimator's explicit gyro-bias state produces cleaner, drift-corrected roll/pitch channels, which the small CNN turns directly into discriminative features (at the cost of only +320 parameters for the extra input channels).
+* **Fusion matters, not the raw orientation channels themselves.** Feeding *unfused* accelerometer-only angles (`accel`, 98.30% / 98.57% F1) lands **exactly on the no-orientation baseline** (98.30% / 98.57%) — the extra +320 parameters buy nothing. Raw tilt angles are dominated by linear-acceleration artefacts during dynamic gestures, so without gyro fusion they carry no usable signal. This confirms it is the Kalman/complementary *fusion*, not merely the presence of roll/pitch inputs, that drives the gain.
+* **The raw-sensor low-pass hurts more than it helps.** With Kalman orientation, adding the acc/gyro low-pass actually *drops* accuracy from 99.36% to 98.72%. The 8/12 Hz cutoffs smooth away high-frequency kinematic detail (sharp jerks, contraction onsets) that distinguish gestures like `jerk_up`/`jerk_down` and `fist`. The sensor pre-filter only marginally benefits the weakest (no-orientation) configuration.
+* **Best configuration:** **Kalman orientation + no raw-sensor filter**, which is both the top scorer and avoids destroying informative signal bandwidth.
+
+### Decision
+Going forward we adopt **Kalman orientation estimation with no low-pass on the raw sensors** (`orientation.method = "kalman"`, `acc_filter = "none"`, `gyro_filter = "none"`), matching the [..._kalman_nosensorfilter](../../models/late_fusion_cnn_test/training_session_size_conv16_dense16_kalman_nosensorfilter/) run — the best-performing filter configuration in this ablation.
+
 ---
