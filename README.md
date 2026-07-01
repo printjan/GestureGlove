@@ -125,11 +125,14 @@ data_fusion_project/
 │   │   │   │   └── ...
 ├── models/
 │   ├── <model_name>/
-│   │   ├──training_session_<index>_<timestamp>/            # one particular training session for that model
+│   │   ├── training_session_<index>_<timestamp>/           # one particular training session for that model
 │   │   │   ├── confusion_matrix.png                        # confusion matrix of the trained model
 │   │   │   ├── learning_curves.png                         # learning curves of the trained model
 │   │   │   ├── model_metadata.json                         # JSON file containing training run audit properties
-│   │   │   └── model.keras                                 # saved trained Keras model structure & weights
+│   │   │   ├── model.keras                                 # saved trained Keras model structure & weights
+│   │   │   ├── model.weights.h5                            # saved raw weights
+│   │   │   └── scaler_x.joblib                             # StandardScaler instance (or scaler_x_wrist.joblib & scaler_x_finger.joblib for multi-branch)
+│   │   ├── training_session_<name>/                        # alternative naming scheme using name instead of index
 ```
 
 ### Data set structure
@@ -171,78 +174,147 @@ IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,
 
 ```json
 {
+  "timestamp": "20260701_181200",
   "model_name": "late_fusion_multi_branch_1d_cnn",
-  "timestamp": "20260628_220600",
-  "machine_info": {
-    "hostname": "MacBook-Pro",
-    "os": "macOS-14.5",
-    "cpu": "Apple M3 Max",
-    "gpu": "Apple M3 Max (Unified Memory)",
-    "ram_gb": 64.0
+  "training_duration_s": 142.35,
+  "epochs_trained": 62,
+  "early_stopped": true,
+  "classes": [
+    "none",
+    "swipe_left",
+    "swipe_right",
+    "circle_cw",
+    "circle_ccw",
+    "fist",
+    "jerk_down",
+    "jerk_up"
+  ],
+  "channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag"
+  ],
+  "wrist_channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag"
+  ],
+  "finger_channels": [
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX"
+  ],
+  "feature_names": [],
+  "feature_toggles": {
+    "IMU1_accX": true,
+    "IMU1_accZ": true,
+    "IMU1_accY": false,
+    "IMU1_gyrX": true,
+    "IMU1_pitch": true,
+    "IMU2_accX": true,
+    "IMU2_accY": true,
+    "IMU2_accZ": true,
+    "IMU2_gyrX": true,
+    "diff_accX": true,
+    "diff_accZ": true,
+    "IMU1_gyr_mag": true
+  },
+  "features_selection": {
+    "default_selected_features": [
+      "IMU1_accX",
+      "IMU1_accZ",
+      "IMU1_gyrX",
+      "IMU1_pitch",
+      "IMU2_accX",
+      "IMU2_accY",
+      "IMU2_accZ",
+      "IMU2_gyrX",
+      "diff_accX",
+      "diff_accZ",
+      "IMU1_gyr_mag"
+    ],
+    "default_deselected_features": [
+      "IMU1_accY"
+    ]
+  },
+  "model_structure": {
+    "total_parameters": 24968,
+    "layers": [
+      {
+        "layer_name": "wrist_input",
+        "class_name": "InputLayer",
+        "output_shape": [null, 150, 7],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "finger_input",
+        "class_name": "InputLayer",
+        "output_shape": [null, 150, 4],
+        "parameter_count": 0
+      }
+    ]
   },
   "training_parameters": {
-    "epochs": 50,
+    "epochs": 70,
     "batch_size": 32,
-    "optimizer": "adam",
     "learning_rate": 0.001,
-    "validation_split": 0.2,
-    "jitter_range": 10,
-    "filters": {
-      "acc_cutoff_hz": 8.0,
-      "gyro_cutoff_hz": 12.0
-    }
-  },
-  "dataset_info": {
-    "total_samples": 450,
-    "per_class_count": {
-      "none": 120,
-      "swipe_left": 50,
-      "swipe_right": 50,
-      "circle_cw": 50,
-      "circle_ccw": 50,
-      "fist": 45,
-      "jerk_down": 45,
-      "jerk_up": 40
-    },
-    "sessions_used": ["session_0", "session_1"]
+    "split_type": "leave-session-out",
+    "test_fraction": 0.20,
+    "val_fraction": 0.10,
+    "seed": 42
   },
   "split_info": {
-    "strategy": "Leave-One-Session-Out (LOSO)",
-    "validation_session": "session_1",
-    "train_sessions": ["session_0"]
+    "strategy": "leave-session-out",
+    "total_samples": 1950,
+    "train_size_abs": 1365,
+    "val_size_abs": 195,
+    "test_size_abs": 390,
+    "train_fraction_real": 0.70,
+    "val_fraction_real": 0.10,
+    "test_fraction_real": 0.20,
+    "train_sessions": ["session_0", "session_2"],
+    "val_sessions": ["session_1"],
+    "test_sessions": ["session_3"]
   },
   "performance": {
     "best_epoch": 42,
-    "train_accuracy": 0.985,
-    "train_loss": 0.045,
-    "val_accuracy": 0.962,
-    "val_loss": 0.125,
-    "val_f1_score": 0.961
+    "train_accuracy": 0.992,
+    "train_loss": 0.021,
+    "val_accuracy": 0.985,
+    "val_loss": 0.033,
+    "val_f1_score": 0.984
   },
   "evaluation": {
-    "accuracy": 0.962,
+    "accuracy": 0.985,
     "macro_avg": {
-      "precision": 0.963,
-      "recall": 0.960,
-      "f1-score": 0.961,
-      "support": 90
-    },
-    "weighted_avg": {
-      "precision": 0.964,
-      "recall": 0.962,
-      "f1-score": 0.962,
-      "support": 90
+      "precision": 0.986,
+      "recall": 0.984,
+      "f1-score": 0.985,
+      "support": 390
     },
     "per_class_metrics": {
-      "none": { "precision": 0.98, "recall": 1.0, "f1-score": 0.99, "support": 24 },
-      "swipe_left": { "precision": 0.95, "recall": 0.90, "f1-score": 0.92, "support": 10 },
-      "swipe_right": { "precision": 0.91, "recall": 1.0, "f1-score": 0.95, "support": 10 },
-      "circle_cw": { "precision": 1.0, "recall": 0.90, "f1-score": 0.95, "support": 10 },
-      "circle_ccw": { "precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 10 },
-      "fist": { "precision": 0.89, "recall": 0.89, "f1-score": 0.89, "support": 9 },
-      "jerk_down": { "precision": 1.0, "recall": 0.89, "f1-score": 0.94, "support": 9 },
-      "jerk_up": { "precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 8 }
+      "none": { "precision": 0.99, "recall": 1.0, "f1-score": 0.99, "support": 100 },
+      "swipe_left": { "precision": 0.98, "recall": 0.97, "f1-score": 0.97, "support": 45 },
+      "swipe_right": { "precision": 0.97, "recall": 0.98, "f1-score": 0.97, "support": 45 }
     }
+  },
+  "pipeline_config": {
+    "sample_rate_hz": 100.0,
+    "window_size": 150,
+    "pad_mode": "edge"
   }
 }
 ```
