@@ -1,3 +1,30 @@
+# Real-Time Inference System
+
+To validate our model's robustness in a realistic scenario we implemented a real-time inference system that either uses physical IMUs or simulates their high frequency input streams.
+
+## Real-Time Inference System
+
+The real-time system executes in the following sequence:
+1. **Sensor Connection:** Automatically connects to the dual-IMU serial ports (specified in `config/devices.yml`). Alternatively, starts high-frequency simulated streams when `--simulate` is set.
+2. **Static Calibration:** Prompts the user to press `[Enter]` and hold still for 6.0 seconds. Computes the baseline offset and aligns sensor timestamps.
+3. **Sliding Window Slicing:** Asynchronously collects data, extracts windows dynamically matching the model's expected shape, performs normalization, and computes inference.
+4. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/config/powerpoint_control.yml) and presses the keys on the active window.
+
+### Usage Commands:
+
+* **Live Mode (Physical Rigs):**
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95
+  ```
+
+* **Simulated Dry-Run (No Hardware Needed):**
+  Useful for quick offline verification and pipeline logic checks:
+  ```bash
+  python scripts/run_realtime_inference_test.py --model-dir models/late_fusion_cnn_test --threshold 0.95 --dry-run --simulate --timeout 20
+  ```
+
+---
+
 # Asynchronous Data Grabber - Technical Documentation
 
 This document describes the design, architecture, implementation, and usage of the **Asynchronous Data Grabber** (`AsynchronousDataGrabber`) implemented in `src/data_fusion_project/inference/data_grabber.py`.
