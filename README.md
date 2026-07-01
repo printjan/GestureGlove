@@ -131,6 +131,7 @@ For detailed documentation on the project data structures and pipelines, please 
 
 - [Model Training Pipeline Documentation](documentation/model_training_pipeline.md) — Comprehensive overview of the unified configuration-driven training pipeline.
 - [Model Training Strategies](documentation/model_training_strategies.md) — Details on baseline comparisons, pipeline evolution, and validation metrics.
+- [Model Training Runs & Evaluation Summary](documentation/models.md) — Registration and comparison of the final model training runs.
 - **Architectures**:
   - [Early Fusion Single-Branch 1D CNN](documentation/model_architectures/early_fusion_single_branch_1d_cnn.md)
   - [Late Fusion Multi-Branch 1D CNN](documentation/model_architectures/late_fusion_multi_branch_1d_cnn.md)
@@ -141,7 +142,8 @@ For detailed documentation on the project data structures and pipelines, please 
 
 ## Real Time Inference Pipeline
 
-- [Asynchronous Real-Time Inference](documentation/asynchronous_real-time_inference.md) — Details on the sliding window setup, queue-based latency control, and real-time prediction.
+- [Production Real-Time Inference Pipeline](documentation/real_time_inference_pipeline.md) — Architecture-agnostic inference pipeline supporting all three production architectures (Early Fusion CNN, Late Fusion CNN, Temporal Transformer) with model loader, scaler dispatch, and dynamic input routing.
+- [Playground Asynchronous Inference](documentation/asynchronous_real-time_inference.md) — Playground inference system for the `late_fusion_cnn_test` model, documenting the `AsynchronousDataGrabber`, ZUPT calibration, and live evaluation system.
 - [PowerPoint Control Interface](documentation/powerpoint_control_interface.md) — Specifications for the real-time presentation controller.
 
 ---
@@ -149,5 +151,6 @@ For detailed documentation on the project data structures and pipelines, please 
 ## Installable `python` Module `data_fusion_project`
 
 - [Core Module Documentation](documentation/data_fusion_project_core.md) — Reference for CLI helpers, path resolution, logging configurations, and testing.
+- [Model Architecture Definition Files (model.py)](src/data_fusion_project/training/) — Source files defining the structural layout of each architecture (Early Fusion, Late Fusion, and Temporal Transformer).
 - [Code Guidelines](documentation/codeguidelines.md) — Standards and coding guidelines for the project.
 
