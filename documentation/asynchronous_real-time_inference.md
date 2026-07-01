@@ -11,7 +11,7 @@ The real-time inference system executes in the following sequence:
 4. **ZUPT Background Calibration:** Continuously monitors signal standard deviations in the background. If stillness is detected, it recalibrates the gyroscope bias registers on-the-fly.
 5. **Preprocessing & Pre-Prediction Transform:** Passes the calibrated sliding windows through the custom model transform callback (scaling and feature selection).
 6. **Live Performance Evaluation (Optional):** If `--evaluate` is enabled, the pipeline detects gesture triggers and listens for user objections (corrective hotkeys) to record True Positives (TP), False Positives (FP), and False Negatives (FN).
-7. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/config/powerpoint_control.yml) and fires key events to control the active PowerPoint window.
+7. **Action Dispatcher:** Translates classified gestures into keyboard shortcuts using [powerpoint_control.yml](../config/powerpoint_control.yml) and fires key events to control the active PowerPoint window.
 
 ---
 

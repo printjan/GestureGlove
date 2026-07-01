@@ -455,10 +455,158 @@ On macOS with the PyTorch backend, full `.keras` model serialization causes a se
 2. If `KERAS_BACKEND == "torch"`: touches `model.keras` as an empty file and logs a warning.
 3. Otherwise: attempts full `model.save()`, falling back to weights-only on failure.
 
-### Metadata Schema
+### Metadata Schema (`model_metadata.json`)
 
-The `model_metadata.json` file complies with the schema defined in `README.md`. Key fields:
+The `model_metadata.json` file contains training run audit properties. It follows the structure below:
 
+```json
+{
+  "timestamp": "20260701_181200",
+  "model_name": "late_fusion_multi_branch_1d_cnn",
+  "training_duration_s": 142.35,
+  "epochs_trained": 62,
+  "early_stopped": true,
+  "classes": [
+    "none",
+    "swipe_left",
+    "swipe_right",
+    "circle_cw",
+    "circle_ccw",
+    "fist",
+    "jerk_down",
+    "jerk_up"
+  ],
+  "channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag"
+  ],
+  "wrist_channels": [
+    "IMU1_accX",
+    "IMU1_accZ",
+    "IMU1_gyrX",
+    "IMU1_pitch",
+    "diff_accX",
+    "diff_accZ",
+    "IMU1_gyr_mag"
+  ],
+  "finger_channels": [
+    "IMU2_accX",
+    "IMU2_accY",
+    "IMU2_accZ",
+    "IMU2_gyrX"
+  ],
+  "feature_names": [],
+  "feature_toggles": {
+    "IMU1_accX": true,
+    "IMU1_accZ": true,
+    "IMU1_accY": false,
+    "IMU1_gyrX": true,
+    "IMU1_pitch": true,
+    "IMU2_accX": true,
+    "IMU2_accY": true,
+    "IMU2_accZ": true,
+    "IMU2_gyrX": true,
+    "diff_accX": true,
+    "diff_accZ": true,
+    "IMU1_gyr_mag": true
+  },
+  "features_selection": {
+    "default_selected_features": [
+      "IMU1_accX",
+      "IMU1_accZ",
+      "IMU1_gyrX",
+      "IMU1_pitch",
+      "IMU2_accX",
+      "IMU2_accY",
+      "IMU2_accZ",
+      "IMU2_gyrX",
+      "diff_accX",
+      "diff_accZ",
+      "IMU1_gyr_mag"
+    ],
+    "default_deselected_features": [
+      "IMU1_accY"
+    ]
+  },
+  "model_structure": {
+    "total_parameters": 24968,
+    "layers": [
+      {
+        "layer_name": "wrist_input",
+        "class_name": "InputLayer",
+        "output_shape": [null, 150, 7],
+        "parameter_count": 0
+      },
+      {
+        "layer_name": "finger_input",
+        "class_name": "InputLayer",
+        "output_shape": [null, 150, 4],
+        "parameter_count": 0
+      }
+    ]
+  },
+  "training_parameters": {
+    "epochs": 70,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "split_type": "leave-session-out",
+    "test_fraction": 0.20,
+    "val_fraction": 0.10,
+    "seed": 42
+  },
+  "split_info": {
+    "strategy": "leave-session-out",
+    "total_samples": 1950,
+    "train_size_abs": 1365,
+    "val_size_abs": 195,
+    "test_size_abs": 390,
+    "train_fraction_real": 0.70,
+    "val_fraction_real": 0.10,
+    "test_fraction_real": 0.20,
+    "train_sessions": ["session_0", "session_2"],
+    "val_sessions": ["session_1"],
+    "test_sessions": ["session_3"]
+  },
+  "performance": {
+    "best_epoch": 42,
+    "train_accuracy": 0.992,
+    "train_loss": 0.021,
+    "val_accuracy": 0.985,
+    "val_loss": 0.033,
+    "val_f1_score": 0.984
+  },
+  "evaluation": {
+    "accuracy": 0.985,
+    "macro_avg": {
+      "precision": 0.986,
+      "recall": 0.984,
+      "f1-score": 0.985,
+      "support": 390
+    },
+    "per_class_metrics": {
+      "none": { "precision": 0.99, "recall": 1.0, "f1-score": 0.99, "support": 100 },
+      "swipe_left": { "precision": 0.98, "recall": 0.97, "f1-score": 0.97, "support": 45 },
+      "swipe_right": { "precision": 0.97, "recall": 0.98, "f1-score": 0.97, "support": 45 }
+    }
+  },
+  "pipeline_config": {
+    "sample_rate_hz": 100.0,
+    "window_size": 150,
+    "pad_mode": "edge"
+  }
+}
+```
+
+Key fields inside `model_metadata.json`:
 - `model_type`: Architecture identifier (`early_fusion_cnn`, `late_fusion_cnn`, `temporal_transformer`)
 - `channels`, `wrist_channels`, `finger_channels`: Dynamic input binding metadata
 - `feature_toggles`, `features_selection`: Optuna optimization results
@@ -469,6 +617,7 @@ The `model_metadata.json` file complies with the schema defined in `README.md`. 
 - `performance`: Best epoch metrics
 - `evaluation`: Per-class precision, recall, F1, and support
 - `pipeline_config`: Full `PipelineConfig` serialization
+
 
 ---
 
@@ -524,6 +673,8 @@ class TimeSeriesScaler:
 
 The following commands represent the **optimal training configurations** derived from the playground experiments. All use:
 
+- **Kalman filter** orientation fusion (estimates gyroscope bias)
+- **No low-pass filter** (disabled Butterworth filtering) on raw inputs
 - **Leave-session-out** splitting (cross-session generalization gold standard)
 - **70 epochs** (compact models need ≥50 to converge)
 - **25° rotation augmentation** (IMU strap mounting angle invariance)
@@ -551,6 +702,8 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
+    --orientation kalman \
+    --no-filter \
     --optimize \
     --optuna-trials 50 \
     --optuna-epochs 15
@@ -566,6 +719,8 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
+    --orientation kalman \
+    --no-filter \
     --optimize \
     --optuna-trials 50 \
     --optuna-epochs 15
@@ -581,6 +736,8 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
+    --orientation kalman \
+    --no-filter \
     --optimize \
     --optuna-trials 50 \
     --optuna-epochs 15
@@ -596,6 +753,8 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
+    --orientation kalman \
+    --no-filter \
     --optimize \
     --optuna-trials 50 \
     --optuna-epochs 15
@@ -611,6 +770,8 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
+    --orientation kalman \
+    --no-filter \
     --optimize \
     --optuna-trials 50 \
     --optuna-epochs 15
@@ -626,6 +787,8 @@ python scripts/train.py \
     --epochs 70 \
     --augment-rotation 25 \
     --jitter-range 20 \
+    --orientation kalman \
+    --no-filter \
     --optimize \
     --optuna-trials 50 \
     --optuna-epochs 15
@@ -641,6 +804,7 @@ python scripts/train.py \
     --model-type early_fusion_cnn --config standard \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
+    --orientation kalman --no-filter \
     --optimize --optuna-trials 50 --optuna-epochs 15
 
 # 2. Early Fusion CNN — Compact
@@ -648,6 +812,7 @@ python scripts/train.py \
     --model-type early_fusion_cnn --config compact \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
+    --orientation kalman --no-filter \
     --optimize --optuna-trials 50 --optuna-epochs 15
 
 # 3. Late Fusion CNN — Standard
@@ -655,6 +820,7 @@ python scripts/train.py \
     --model-type late_fusion_cnn --config standard \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
+    --orientation kalman --no-filter \
     --optimize --optuna-trials 50 --optuna-epochs 15
 
 # 4. Late Fusion CNN — Compact
@@ -662,6 +828,7 @@ python scripts/train.py \
     --model-type late_fusion_cnn --config compact \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
+    --orientation kalman --no-filter \
     --optimize --optuna-trials 50 --optuna-epochs 15
 
 # 5. Temporal Transformer — Standard
@@ -669,6 +836,7 @@ python scripts/train.py \
     --model-type temporal_transformer --config standard \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
+    --orientation kalman --no-filter \
     --optimize --optuna-trials 50 --optuna-epochs 15
 
 # 6. Temporal Transformer — Compact
@@ -676,6 +844,7 @@ python scripts/train.py \
     --model-type temporal_transformer --config compact \
     --split leave-session-out --epochs 70 \
     --augment-rotation 25 --jitter-range 20 \
+    --orientation kalman --no-filter \
     --optimize --optuna-trials 50 --optuna-epochs 15
 ```
 

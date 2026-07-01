@@ -131,16 +131,16 @@ graph TD
 
 ## Model Implementation Details & Source Files
 
-* **Model Definition:** [model.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py)
+* **Model Definition:** [model.py](../../src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py)
   * **What it does:** Builds the multi-branch Conv1D baseline network using the Keras Functional API. It separates input windows into distinct branches (Wrist Conv1D, Finger Conv1D, and MLP for handcrafted statistical features), extracts spatial-temporal representations independently, concatenates them, and feeds the output into classification layers.
   * **Key Functions:**
     * `build_multi_branch_cnn()`: Instantiates, configures, and compiles the model.
     * `parse_channel_indices()`: Maps the model's target input channel lists to index offsets within the raw preprocessed sensor streams.
-* **Core Training Logic:** [train.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/train.py)
+* **Core Training Logic:** [train.py](../../src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/train.py)
   * **What it does:** Implements the training loop, validation logic (Leave-Session-Out split), and the Optuna optimization hyperparameter trials. It computes the **Joint Utility Score** used by Optuna:
     $$\text{Utility} = \text{Validation F1} - (0.001 \times \text{Latency ms}) - (10^{-6} \times \text{Parameter Count})$$
   * **Key Outputs:** Serialization of final trained model weights (`.weights.h5`), training metadata (`model_metadata.json`), and standard scalers (`scaler_wrist.pkl`, `scaler_finger.pkl`).
-* **CLI Training Script:** [train_test_cnn.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/scripts/train_test_cnn.py)
+* **CLI Training Script:** [train_test_cnn.py](../../scripts/train_test_cnn.py)
   * **What it does:** Provides the user-facing command-line entrypoint for standard baseline training or Bayesian feature/hyperparameter sweeps.
   * **Primary Options:**
     * `--epochs INT`: Number of training epochs (default: `10`).
@@ -150,7 +150,7 @@ graph TD
     * `--optimize`: Flag to enable Optuna search optimization.
     * `--optuna-trials INT`: Number of optimization search runs (default: `20`).
     * `--optuna-epochs INT`: Training epochs executed per trial (default: `5`).
-* **Live Inference Script:** [run_realtime_inference_test.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/scripts/run_realtime_inference_test.py)
+* **Live Inference Script:** [run_realtime_inference_test.py](../../scripts/run_realtime_inference_test.py)
   * **What it does:** Manages live stream readers from two serial ports, aligns and standardizes them in sliding windows, feeds them to the classifier model, and maps classified gestures to PowerPoint shortcut events.
   * **Primary Options:**
     * `--model-dir PATH`: Directory containing the model run. Automatically resolves to the latest session (e.g. `training_session_16_...`) if pointed to a base model directory.
@@ -398,7 +398,7 @@ Here is an example layout demonstrating the exact structure of a generated metad
 
 ## Feature Selection Categories & Inspection
 
-To inspect how the 37 possible features are grouped and parsed during the Bayesian dynamic selection sweep:
+To inspect how the 37 possible features are grouped and parsed during the Bayesian dynamic selection sweep. The baseline values for these categories were determined by auditing feature importances and mutual information in the [Data Quality Audit Notebook](../../data_analysis/data_analysis_data_v2/data_quality_audit.ipynb) and [Feature Filter Analysis Notebook](../../data_analysis/data_analysis_data_v2/feature_filter_analysis.ipynb):
 
 ### 1. Mandatory (Kept) Features (Selected from the get-go; NOT tested)
 These are key baseline signals that pack high information density and are **always enabled** (set to `true` in `feature_toggles`) regardless of Optuna optimization outcomes:
@@ -479,21 +479,21 @@ By running with `--optimize`, Optuna naturally favors smaller feature spaces and
 ### Regularization Parameters
 *   **Dropout (Activation Regularization):** 
     *   *Mechanism:* Randomly drops out unit activations (disabling neuron outputs) during training, forcing the network to learn redundant, distributed paths and preventing neuron co-adaptation.
-    *   We set both the feature MLP and final classification head dropouts to `0.5` (50%) in [model.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py#L118-L133).
+    *   We set both the feature MLP and final classification head dropouts to `0.5` (50%) in [model.py](../../src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py#L118-L133).
 *   **L2 Weight Regularization (Parameter Weight Decay):** 
     *   *Mechanism:* Adds a squared weight penalty to the loss function, forcing the layer weight coefficients to remain small. This results in smoother mathematical decision curves, preventing the filters from memorizing high-frequency sensor noise.
     *   We applied a moderate `kernel_regularizer=keras.regularizers.l2(1e-4)` to the Conv1D kernels in the Wrist and Finger branches, because over-regularization can lead to underfitting.
 
 ### Lower the Model Capacity (Scale Down Architecture)
 A smaller model has a lower capacity to memorize data:
-*   **Reduce Filters:** In [model.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py), reduce the Conv1D filters. Instead of the default `32 -> 64` configuration, scale down to `16 -> 32` or even a single Conv1D layer with `16` filters.
+*   **Reduce Filters:** In [model.py](../../src/data_fusion_project/training/late_fusion_multi_branch_cnn_test/model.py), reduce the Conv1D filters. Instead of the default `32 -> 64` configuration, scale down to `16 -> 32` or even a single Conv1D layer with `16` filters.
 *   **Reduce Dense Neurons:** Scale down the classification dense layer from `64` neurons to `32` or `16`.
 
 ---
 
 ## Data Splitting Strategies & Leakage Prevention
 
-To ensure honest and reliable model evaluation, the training pipeline implements three index-based splitting strategies in [splits.py](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/src/data_fusion_project/processing/splits.py):
+To ensure honest and reliable model evaluation, the training pipeline implements three index-based splitting strategies in [splits.py](../../src/data_fusion_project/processing/splits.py):
 
 ### Implemented Splits & Selection
 *   **Leave-Session-Out (`leave-session-out`):** Groups data by session ID (recording files). It splits whole sessions, holding out an entire recording file (e.g. 20% of sessions) for testing and using the remaining files for training. We believe that this is the most realistic evaluation because the model is tested on a brand-new recording session reflecting variations in hand mounting, user arm fatigue, and sensor drift.
@@ -519,7 +519,7 @@ python scripts/train_test_cnn.py --split chronological --epochs 50
 
 ## Evaluating the Impact of Data Splitting Strategies
 
-We evaluated the performance of our multi-branch architecture across different dataset splitting strategies to isolate their impact. All runs executed a complete Bayesian feature sweep (50 Optuna trials, 15 trials epochs, 25-degree rotation augmentation, 70 training epochs) under the following base command:
+We evaluated the performance of our multi-branch architecture across different dataset splitting strategies to isolate their impact. (For the underlying statistical validation of Leave-One-Session-Out validation on the dataset, refer to the [Feature Filter Analysis Notebook](../../data_analysis/data_analysis_data_v2/feature_filter_analysis.ipynb)). All runs executed a complete Bayesian feature sweep (50 Optuna trials, 15 trials epochs, 25-degree rotation augmentation, 70 training epochs) under the following base command:
 
 ```bash
 python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 15 --augment-rotation 25 --epochs 70 --model-name late_fusion_cnn_test --split <split-strategy>
@@ -530,13 +530,13 @@ python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 1
 
 | Experiment / Strategy | Split Type | Parameters / Augmentation | Test Accuracy | Macro F1-Score | Best Val Loss | Target Run Subdirectory |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **1. Stratified Split** | stratified | Default fractions | **99.06%** | **99.21%** | 0.0331 | [training_session_split_test_stratified](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_stratified/) |
-| **2. Chronological Split** | chronological | Default fractions | **96.25%** | **96.89%** | 0.0144 | [training_session_split_test_chronological](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_chronological/) |
-| **3. Leave-Session-Out** | leave-session-out | Default fractions | **48.00%** | **28.84%** | 2.7887 | [training_session_split_test_leave-session-out](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out/) |
-| **4. Expanded Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15` | **96.73%** | **97.26%** | 0.3162 | [training_session_expanded_chronological_split](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_expanded_chronological_split/) |
-| **5. Jitter-Augmented Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15 --jitter-range 25` | **96.03%** | **96.70%** | 0.3388 | [training_session_jitter_augmented_chronological_split](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_jitter_augmented_chronological_split/) |
-| **6. Leave-Session-Out (Repeat)** | leave-session-out | Dataset V4 (Balanced custom splits) | **99.00%** | **99.18%** | 0.0153 | [training_session_split_test_leave-session-out_repeat](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out_repeat/) |
-| **7. Leave-Session-Out (Small)** | leave-session-out | Dataset V4 (`--conv-filters 16 --dense-units 16`) | **99.40%** | **99.50%** | 0.0217 | [training_session_size_test_conv16_dense16_leave_session_out_repeat](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv16_dense16_leave_session_out_repeat/) |
+| **1. Stratified Split** | stratified | Default fractions | **99.06%** | **99.21%** | 0.0331 | [training_session_split_test_stratified](../../models/late_fusion_cnn_test/training_session_split_test_stratified/) |
+| **2. Chronological Split** | chronological | Default fractions | **96.25%** | **96.89%** | 0.0144 | [training_session_split_test_chronological](../../models/late_fusion_cnn_test/training_session_split_test_chronological/) |
+| **3. Leave-Session-Out** | leave-session-out | Default fractions | **48.00%** | **28.84%** | 2.7887 | [training_session_split_test_leave-session-out](../../models/late_fusion_cnn_test/training_session_split_test_leave-session-out/) |
+| **4. Expanded Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15` | **96.73%** | **97.26%** | 0.3162 | [training_session_expanded_chronological_split](../../models/late_fusion_cnn_test/training_session_expanded_chronological_split/) |
+| **5. Jitter-Augmented Chronological** | chronological | `--test-fraction 0.27 --val-fraction 0.15 --jitter-range 25` | **96.03%** | **96.70%** | 0.3388 | [training_session_jitter_augmented_chronological_split](../../models/late_fusion_cnn_test/training_session_jitter_augmented_chronological_split/) |
+| **6. Leave-Session-Out (Repeat)** | leave-session-out | Dataset V4 (Balanced custom splits) | **99.00%** | **99.18%** | 0.0153 | [training_session_split_test_leave-session-out_repeat](../../models/late_fusion_cnn_test/training_session_split_test_leave-session-out_repeat/) |
+| **7. Leave-Session-Out (Small)** | leave-session-out | Dataset V4 (`--conv-filters 16 --dense-units 16`) | **99.40%** | **99.50%** | 0.0217 | [training_session_size_test_conv16_dense16_leave_session_out_repeat](../../models/late_fusion_cnn_test/training_session_size_test_conv16_dense16_leave_session_out_repeat/) |
 
 ### Detailed Analysis of Findings
 
@@ -559,7 +559,7 @@ python scripts/train_test_cnn.py --optimize --optuna-trials 50 --optuna-epochs 1
 
 #### **3. Leave-Session-Out Split (Methodologically Flawed Setup)**
 *   **Performance:** Test Accuracy: **48.00%** | Macro F1-Score: **28.84%** | Best Val Loss: **2.7887** (Epoch 1).
-*   **Target Run Directory:** [training_session_split_test_leave-session-out](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out/)
+*   **Target Run Directory:** [training_session_split_test_leave-session-out](../../models/late_fusion_cnn_test/training_session_split_test_leave-session-out/)
 *   **Composition & Flaw Analysis:**
     These experiments were run on the **third version of the dataset** (1600 samples, 20 unique session groups recorded by a single subject). Each physical recording session represents a single sensor mounting alignment. Crucially, each session only contains recordings of a *single gesture class* (with minor exceptions). When splits are determined on a session-wide basis (holding out 4 sessions for Test and 2 for Val), the small number of sessions per class (mostly 2) mathematically guarantees that entire classes are completely excluded from splits:
 
@@ -613,7 +613,7 @@ To isolate the physical impact of sensor repositioning from the software issues 
 * **Validation Set**: The fourth version of the dataset expands the third version of the dataset by two new recording sessions `test` and `val` for all gestures. Between recording the test and val sessions, the user repositioned the sensors on their arm.
 * **This way every single class can be represented in the train, test and validation set without information leakage**: We ran the repeated experiment (`training_session_split_test_leave-session-out_repeat`) using the baseline model architecture with standard configuration on the new dataset:
   * **Performance:** Test Accuracy: **99.00%** | Macro F1-Score: **99.18%** | Best Val Loss: **0.0153** (Restored at best epoch **53** out of 70).
-  * **Target Run Directory:** [training_session_split_test_leave-session-out_repeat](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out_repeat/)
+  * **Target Run Directory:** [training_session_split_test_leave-session-out_repeat](../../models/late_fusion_cnn_test/training_session_split_test_leave-session-out_repeat/)
   * **Analysis of Success:**
       * **Loop Restoration:** Since every gesture class is represented in the validation split (`validation_data`), the validation loss is computed over a representative sample of active gestures. The loss decreases smoothly, allowing the model to achieve its best validation loss at epoch 53 and complete the full **70 training epochs** (since the remaining 17 epochs were within the 20-epoch patience window, early stopping did not trigger).
       * **Cross-Session Generalization:** Achieving **99.00% accuracy** on the test set (`test_data`) is extremely significant. Because the sensors were physically repositioned on the arm between recording the training/validation data and the test session, this high score proves the model generalizes robustly to physical shifts and does not rely on absolute session characteristics when provided with class-balanced, multi-session data.
@@ -643,12 +643,12 @@ To force the model to generalize better and prevent overfitting on session-speci
 
 | Experiment / Network Size | Conv1D Filters | Dense Units | Train Acc / Loss | Test Acc / Loss | Generalization Gap (Acc / Loss) | Best Epoch | Target Run Subdirectory |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Baseline Model** | `[32, 64]` | `64` | 98.50% / 0.078 | 96.03% / 0.339 | +2.47% / +0.261 | 8 / 70 | [training_session_jitter_augmented_chronological_split](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_jitter_augmented_chronological_split/) |
-| **Experiment A** | `[16, 32]` | `64` | 99.15% / 0.071 | 95.56% / 0.306 | +3.59% / +0.235 | 13 / 70 | [training_session_size_test_conv16_32_dense64](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv16_32_dense64/) |
-| **Experiment B** | `[16]` | `64` | 98.08% / 0.105 | 96.26% / 0.238 | +1.82% / +0.134 | 15 / 70 | [training_session_size_test_conv16_dense64](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv16_dense64/) |
-| **Experiment C** | `[32, 64]` | `32` | 95.19% / 0.153 | 95.79% / 0.325 | -0.60% / +0.172 | 13 / 70 | [training_session_size_test_conv32_64_dense32](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv32_64_dense32/) |
-| **Experiment D** | `[32, 64]` | `16` | 89.85% / 0.252 | **97.43% / 0.071** | **-7.58% / -0.181** | **42 / 70** | [training_session_size_test_conv32_64_dense16](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv32_64_dense16/) |
-| **Experiment E (Compact)** | `[16]` | `16` | 89.42% / 0.290 | 96.26% / 0.218 | -6.84% / -0.072 | **42 / 70** | [training_session_size_test_conv16_dense16](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_size_test_conv16_dense16/) |
+| **Baseline Model** | `[32, 64]` | `64` | 98.50% / 0.078 | 96.03% / 0.339 | +2.47% / +0.261 | 8 / 70 | [training_session_jitter_augmented_chronological_split](../../models/late_fusion_cnn_test/training_session_jitter_augmented_chronological_split/) |
+| **Experiment A** | `[16, 32]` | `64` | 99.15% / 0.071 | 95.56% / 0.306 | +3.59% / +0.235 | 13 / 70 | [training_session_size_test_conv16_32_dense64](../../models/late_fusion_cnn_test/training_session_size_test_conv16_32_dense64/) |
+| **Experiment B** | `[16]` | `64` | 98.08% / 0.105 | 96.26% / 0.238 | +1.82% / +0.134 | 15 / 70 | [training_session_size_test_conv16_dense64](../../models/late_fusion_cnn_test/training_session_size_test_conv16_dense64/) |
+| **Experiment C** | `[32, 64]` | `32` | 95.19% / 0.153 | 95.79% / 0.325 | -0.60% / +0.172 | 13 / 70 | [training_session_size_test_conv32_64_dense32](../../models/late_fusion_cnn_test/training_session_size_test_conv32_64_dense32/) |
+| **Experiment D** | `[32, 64]` | `16` | 89.85% / 0.252 | **97.43% / 0.071** | **-7.58% / -0.181** | **42 / 70** | [training_session_size_test_conv32_64_dense16](../../models/late_fusion_cnn_test/training_session_size_test_conv32_64_dense16/) |
+| **Experiment E (Compact)** | `[16]` | `16` | 89.42% / 0.290 | 96.26% / 0.218 | -6.84% / -0.072 | **42 / 70** | [training_session_size_test_conv16_dense16](../../models/late_fusion_cnn_test/training_session_size_test_conv16_dense16/) |
 
 ### Key Insights from Architecture Scaling (Overfitting Mitigation):
 1.  **Classifier Capacity Bottlenecking (Generalization Breakthrough):** 
@@ -670,7 +670,7 @@ A critical tension in our early analysis arose when comparing the results of the
 However, subsequent experiments and architectural reviews resolved this apparent contradiction, proving that our models are highly robust and capable of generalization. Below, we mathematically and physically analyze these learning dynamics, explain the methodological flaws in our initial split, and contrast the generalization capabilities of our models against true subject-dependent limitations.
 
 ### **Resolving the Generalization Question (Experiment 6 & 7)**
-Once the methodology was corrected by collecting **Dataset V4** (which manually records all gesture classes within each validation and test session) and executing the repeated Leave-Session-Out run ([Experiment 6](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/models/late_fusion_cnn_test/training_session_split_test_leave-session-out_repeat/)), the baseline model achieved **99.00% test accuracy** and **99.18% Macro F1-score** (Best Val Loss: **0.0153**, restored at epoch **53**). 
+Once the methodology was corrected by collecting **Dataset V4** (which manually records all gesture classes within each validation and test session) and executing the repeated Leave-Session-Out run ([Experiment 6](../../models/late_fusion_cnn_test/training_session_split_test_leave-session-out_repeat/)), the baseline model achieved **99.00% test accuracy** and **99.18% Macro F1-score** (Best Val Loss: **0.0153**, restored at epoch **53**). 
 
 To further investigate whether this high accuracy is authentic or represents subtle overfitting (e.g., memorizing session-specific sensor characteristics), we trained a highly constrained, compact model (**Experiment 7**) with a single Conv1D layer of only 16 filters per branch and 16 units in the dense classification head. This compact architecture contains only **2,744 parameters** (representing a **89.3% reduction** compared to the baseline's 25,704 parameters).
 

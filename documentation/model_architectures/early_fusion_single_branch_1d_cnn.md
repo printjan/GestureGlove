@@ -1,6 +1,6 @@
 # Implementation Plan: Early Fusion Single-Branch Conv1D CNN
 
-This document details the architectural design, layer specifications, preprocessing pipelines, mathematical formulations, and engineering justifications for the **Early Fusion Single-Branch Conv1D CNN** gesture classification candidate. It incorporates all empirical insights gained from our playground experiments (`late_fusion_cnn_test`) documented in [late_fusion_multi_branch_1d_cnn_test_model.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/documentation/model_architectures/late_fusion_multi_branch_1d_cnn_test_model.md).
+This document details the architectural design, layer specifications, preprocessing pipelines, mathematical formulations, and engineering justifications for the **Early Fusion Single-Branch Conv1D CNN** gesture classification candidate. It incorporates all empirical insights gained from our playground experiments (`late_fusion_cnn_test`) documented in [playground_model_experiments.md](playground_model_experiments.md).
 
 ---
 
@@ -189,9 +189,9 @@ models/
         └── learning_curves.png                      # Training/validation loss and accuracy curves
 ```
 
-* **Sequential Indexing**: The training script must dynamically query existing directories under `models/early_fusion_single_branch_1d_cnn/` to determine the next available sequential integer `<index>` (starting at `0` for the first run). Alternatively, an optional custom naming scheme (`training_session_<name>`) can be used as defined in [README.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/README.md).
+* **Sequential Indexing**: The training script must dynamically query existing directories under `models/early_fusion_single_branch_1d_cnn/` to determine the next available sequential integer `<index>` (starting at `0` for the first run). Alternatively, an optional custom naming scheme (`training_session_<name>`) can be used as defined in [model_training_pipeline.md](../model_training_pipeline.md).
 * **Single Scaler Serializer**: Because this is a single-branch architecture, all active features are normalized together. A single `StandardScaler` instance must be fit on the training features and saved to `scaler_x.joblib`.
-* **Metadata Logging**: The `model_metadata.json` file must strictly comply with the schema specified in [README.md](file:///Users/jantischner/Library/CloudStorage/OneDrive-Personal/TH_OHM_B.Sc.Inf/Th-Ohm_B.Sc.Inf_Sem6/DatFus_Sem6_Axenie/DataFusionProject/README.md#model-metadata-properties-structure-model_metadatajson). Because early fusion projects all features into a single sequence, the `wrist_channels` and `finger_channels` fields in `model_metadata.json` must be set to empty lists `[]`. All active features selected by Optuna must be stored in the `channels` array, and the active/inactive toggles tracked inside the `feature_toggles` map.
+* **Metadata Logging**: The `model_metadata.json` file must strictly comply with the schema specified in [model_training_pipeline.md](../model_training_pipeline.md#metadata-schema-model_metadatajson). Because early fusion projects all features into a single sequence, the `wrist_channels` and `finger_channels` fields in `model_metadata.json` must be set to empty lists `[]`. All active features selected by Optuna must be stored in the `channels` array, and the active/inactive toggles tracked inside the `feature_toggles` map.
 
 ---
 

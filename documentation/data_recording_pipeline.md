@@ -15,7 +15,69 @@ The hardware setup consists of two independent LSM6DS3 Inertial Measurement Unit
 
 ---
 
-## 2. Multi-threaded Data Acquisition
+## 2. Directory and Recorded Data Structure
+
+The pipeline stores data in a structured hierarchy under the `data/` directory.
+
+### Data Directory Structure
+
+```
+data_fusion_project/
+├── data/
+│   ├── <gesture name>/
+│   │   │   ├── <recording_session>/
+│   │   │   │   ├── recording_session.json           # properties of the particular recording session
+│   │   │   │   ├── calibration_<index>.csv          # 5 second recording of no movement to establish sensor drift
+│   │   │   │   ├── calibration_<index>.png          # plot of the static calibration recording
+│   │   │   │   ├── energy_distribution_<index>.csv  # motion energy distribution stats (centered 150 samples)
+│   │   │   │   ├── centered_energy_distribution_<index>.png # plot of the centered 150-sample energy band
+│   │   │   │   ├── overall_energy_distribution_<index>.png  # plot of the raw 1.74s energy band with average bounds
+│   │   │   │   ├── 00001.csv                        # raw 1.74-second gesture recording (~174 samples)
+│   │   │   │   ├── 00001.txt                        # start index of the centered 150-sample gesture window
+│   │   │   │   ├── 00001.png                        # plot of raw recording with vertical start/end markers
+│   │   │   │   └── ...
+```
+
+### Dataset Column Structure
+
+Column structure of `<id>.csv` or `calibration_<index>.csv` files (they contain raw sensor data from both IMUs):
+
+```csv
+IMU1_accX,IMU1_accY,IMU1_accZ,IMU1_gyrX,IMU1_gyrY,IMU1_gyrZ,IMU2_accX,IMU2_accY,IMU2_accZ,IMU2_gyrX,IMU2_gyrY,IMU2_gyrZ
+```
+
+### Recording Session Properties Structure (`recording_session.json`)
+
+Each recording session directory contains a `recording_session.json` audit file with session-level configurations:
+
+```json
+{
+  "baudrate": 115200,
+  "record_duration_s": 1.5,
+  "target_samples": 150,
+  "max_samples_before_recalibration": 25,
+  "pre_buffer_s": 0.12,
+  "post_buffer_s": 0.12,
+  "recalibrations": [
+    {
+      "file": "calibration_<index>.csv", # IMU static recording used to calculate sensor drift
+      "sample_index": <sample_count_at_calibration>
+    },
+    ...
+  ],
+  "energy_distributions": [
+    {
+      "file": "energy_distribution_<index>.csv", # Calculated motion energy distribution stats
+      "sample_index": <sample_count_at_distribution>
+    },
+    ...
+  ]
+}
+```
+
+---
+
+## 3. Multi-threaded Data Acquisition
 
 To prevent OS-level serial buffer overflows and eliminate blocking I/O latency from the main execution thread, the data collection is asynchronous and multi-threaded:
 
@@ -39,7 +101,7 @@ graph TD
 
 ---
 
-## 3. Recording Lifecycle and Boundary Handling
+## 4. Recording Lifecycle and Boundary Handling
 
 Because the two ESP32 microcontrollers run on independent hardware clocks and are started asynchronously, their first sample packets will never arrive at the exact same microsecond. In finite recordings, the overlapping segment where **both** sensors have valid data is mathematically guaranteed to be shorter than the overall session duration.
 
@@ -53,7 +115,7 @@ To ensure the overlapping region is long enough to fit a complete target window 
 
 ---
 
-## 4. Temporal Alignment & Grid Resampling
+## 5. Temporal Alignment & Grid Resampling
 
 Raw snapshots are aligned and resampled in [sync.py](../src/data_fusion_project/recording/sync.py) before window extraction:
 
@@ -69,7 +131,7 @@ Resampled:   |---------|---------|---------|---------| (Strict 100 Hz Grid)
 
 ---
 
-## 5. Centroid-Based Gesture Centering and Boundary Preservation
+## 6. Centroid-Based Gesture Centering and Boundary Preservation
 
 Instead of cropping the CSV files on disk blindly to 150 samples, the recording pipeline preserves the **entire 1.74-second raw resampled segment** in the CSV file, and writes the **start index** of the centered 150-sample window to a companion `.txt` file with the same index (e.g. `00001.csv` and `00001.txt`).
 
@@ -93,7 +155,7 @@ Preserving the full 1.74-second window on disk rather than cropping it immediate
 
 ---
 
-## 6. Continuous Overlapping Recording (`none` gesture)
+## 7. Continuous Overlapping Recording (`none` gesture)
 
 For the continuous `none` (stillness) gesture, the script reads a continuous stream.
 * A rolling buffer is monitored. Once the overlap exceeds $1.5\text{s}$ ($1500\text{ ms}$), a $1.5\text{s}$ window is extracted.
@@ -101,7 +163,7 @@ For the continuous `none` (stillness) gesture, the script reads a continuous str
 
 ---
 
-## 7. Fail-Fast Data Integrity
+## 8. Fail-Fast Data Integrity
 
 To ensure that only high-quality data is recorded, the pipeline aborts immediately on any anomalies:
 * **Rate Jitter Check**: The sample count in the recording must fall within a strict deviation range (default: $\pm 30\%$ of the target rate).
@@ -112,7 +174,7 @@ To ensure that only high-quality data is recorded, the pipeline aborts immediate
 
 ---
 
-## 8. Periodic Recalibration & Drift Auditing
+## 9. Periodic Recalibration & Drift Auditing
 
 To limit sensor/gyroscope bias drift within a session, the pipeline automatically requests a new static calibration after a fixed number of samples:
 * **Threshold Flag (`MAX_SAMPLES_BEFORE_RECALIBRATION`):** Defines the maximum number of gesture samples recorded (for both active gestures and continuous `none` slices) before a re-calibration is automatically requested (default: `25` samples).
@@ -126,7 +188,7 @@ To limit sensor/gyroscope bias drift within a session, the pipeline automaticall
 
 ---
 
-## 9. Open Questions for Model Training
+## 10. Open Questions for Model Training
 
 ### Alignment Precision vs. Jitter Augmentation
 * **The Concern:** In real-time PowerPoint control, we only need the CNN model to output a positive classification over 2 or 3 sliding windows to trigger the slide change. Perfect boundary alignment inside the window is not strictly necessary for triggering events, but class discrimination is. There is a concern that if the CNN is trained on non-centered or highly jittered data, it might lose its discriminatory capabilities (e.g., getting better at predicting *that* a gesture happened, but confusing *which* gesture was performed).
@@ -141,7 +203,7 @@ To limit sensor/gyroscope bias drift within a session, the pipeline automaticall
 
 ---
 
-## 9. Open Questions for Real Time Inference
+## 11. Open Questions for Real Time Inference
 
 ### Real-Time Calibration (Zero-Velocity Updates - ZUPT)
 To keep the demo seamless without forcing the user to pause manually for re-calibration, the system should support background Zero-Velocity Updates (ZUPT):
