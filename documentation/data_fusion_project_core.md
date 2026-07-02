@@ -76,6 +76,21 @@ data_fusion_project/
         └── processing/            # offline calibration / feature pipeline (CNN-ready arrays)
 ```
 
+**Key files:**
+
+| Component | Source File |
+|:---|:---|
+| Recording controller | [record_data.py](../scripts/record_data.py) |
+| Dataset builder | [build_dataset.py](../scripts/build_dataset.py) |
+| Processing visualizer | [visualize_processing.py](../scripts/visualize_processing.py) |
+| Dataset sanity check | [check_samples.py](../tests/check_samples.py) |
+| Path resolution | [paths.py](../src/data_fusion_project/core/paths.py) |
+| Logging setup | [logger_setup.py](../src/data_fusion_project/core/logger_setup.py) |
+| CLI helpers | [cli_ui.py](../src/data_fusion_project/core/cli_ui.py) |
+| Serial receiver | [input_data.py](../src/data_fusion_project/recording/input_data.py) |
+| Hardware port mapping | [device_resolution.py](../src/data_fusion_project/recording/device_resolution.py) |
+| Timestamp synchronization | [sync.py](../src/data_fusion_project/recording/sync.py) |
+
 ### How `data_fusion_project` Finds Paths
 
 The package determines the workspace root dynamically using `data_fusion_project.core.paths.get_project_root()` in accordance with the following rules:

@@ -1,6 +1,6 @@
 # Implementation Plan: Early Fusion Single-Branch Conv1D CNN
 
-This document details the architectural design, layer specifications, preprocessing pipelines, mathematical formulations, and engineering justifications for the **Early Fusion Single-Branch Conv1D CNN** gesture classification candidate. It incorporates all empirical insights gained from our playground experiments (`late_fusion_cnn_test`) documented in [playground_model_experiments.md](playground_model_experiments.md).
+This document details the architectural design, layer specifications, preprocessing pipelines, mathematical formulations, and engineering justifications for the **Early Fusion Single-Branch Conv1D CNN** gesture classification candidate (see [model.py](../../src/data_fusion_project/training/early_fusion_single_branch_1d_cnn/model.py)). It incorporates all empirical insights gained from our playground experiments (`late_fusion_cnn_test`) documented in [playground_model_experiments.md](playground_model_experiments.md).
 
 ---
 
