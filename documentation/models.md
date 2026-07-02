@@ -1,6 +1,6 @@
 # Model Training Runs & Evaluation Summary
 
-This document registers and evaluates the performance of the three deep learning architectures trained on the balanced dual-IMU dataset (V4) using our optimized configuration-driven pipeline. 
+This document registers and evaluates the performance of the three deep learning architectures trained on the balanced dual-IMU dataset (V4) using our [optimized configuration-driven pipeline](model_training_pipeline.md). 
 
 ---
 
@@ -8,13 +8,13 @@ This document registers and evaluates the performance of the three deep learning
 
 All three models were trained using identical hyperparameters and pre-processing pipeline configurations to ensure a direct, scientific comparison:
 
-*   **Split Strategy:** `leave-session-out` (deterministic split with `seed=42`)
+*   **Split Strategy:** [`leave-session-out`](model_training_pipeline.md#3-data-splitting) (deterministic split with `seed=42`)
 *   **Data Directory:** Balanced gesture dataset V4 (`data/dataset_current`)
 *   **Maximum Epochs:** 70 (guided by a learning rate reduction scheduler and dynamic early stopping)
 *   **Data Augmentation:** Rotation range of $\pm 25^{\circ}$, temporal window jitter of $\pm 20$ samples
-*   **Orientation Filter:** `kalman` (Kalman-filtered quaternion-derived roll and pitch angles)
+*   **Orientation Filter:** [`kalman`](data_processing_pipeline.md#orientationmethod) (Kalman-filtered quaternion-derived roll and pitch angles)
 *   **Signal Filters:** `no-filter` (Butterworth raw accelerometer and gyroscope low-pass filters disabled to feed raw high-frequency features directly into the network)
-*   **Hyperparameter Search:** Optuna dynamic feature optimization enabled (25 trials, 10 epochs per trial)
+*   **Hyperparameter Search:** [Optuna dynamic feature optimization](model_training_pipeline.md#bayesian-feature-optimization-optuna) enabled (25 trials, 10 epochs per trial)
 
 ---
 

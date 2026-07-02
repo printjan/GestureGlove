@@ -3,7 +3,7 @@
 
 - Comments, documentation, filepaths and outputs (like logging messages) are to be written in english!
 
-- Always use the custom logger in `logger_setup.py` and the custom `cli_ui.py`, that are part of the installable python module `data_fusion_project`!
+- Always use the custom logger in [`logger_setup.py`](../src/data_fusion_project/core/logger_setup.py) and the custom [`cli_ui.py`](../src/data_fusion_project/core/cli_ui.py), which are part of the installable python module `data_fusion_project` (see [Core Module Documentation](data_fusion_project_core.md))!
 
 - Keep `logger` and `raise` statements strictly one line in code (other statements don’t have to adher to this rule).
 

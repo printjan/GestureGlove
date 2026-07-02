@@ -95,7 +95,7 @@ Once the dataset is audited, use the metrics to drive engineering choices:
 | **Low Separability** ($S(C_A, C_B) < 1.0$) between directionals | **Feature Engineering** | Compute first-order time derivatives (jerk) and integrate Z-gyroscope (relative yaw) to isolate direction vectors. |
 | **High Intra-class Variance** (inconsistent speed) | **Preprocessing / Augmentation** | Apply **Time Warping Augmentation** (rescaling the time-axis by $\pm 20\%$) to teach rate invariance. |
 | **Low JS Divergence** ($D_{JS} < 0.4$) for subtle gestures | **Real-Time Pipeline** | Implement a two-stage classification: (1) high-sensitivity energy trigger, (2) multi-class CNN inference gating. |
-| **Real-time Latency Mismatch** | **Model Training** | Set `jitter_range` in `PipelineConfig` to randomly shift slices, training the model to recognize off-center boundaries. |
+| **Real-time Latency Mismatch** | **Model Training** | Set `jitter_range` in [`PipelineConfig`](data_processing_pipeline.md) to randomly shift slices, training the model to recognize off-center boundaries. |
 
 
 
@@ -267,7 +267,7 @@ To correct physical sensor defects and offsets, the pipeline runs a **static cal
 
 1. **Gyroscope Zero-Bias Subtraction:** Raw gyroscopes read small non-zero values even when held completely still. During static calibration (recorded for 5 seconds), the pipeline calculates the mean value ($\bar{\mathbf{g}}_{bias}$) for each axis. During subsequent dynamic recordings, this static offset is subtracted: $\mathbf{g}_{corrected} = \mathbf{g}_{raw} - \bar{\mathbf{g}}_{bias}$. This removes constant offsets, which is critical to preventing relative yaw integration from drifting.
 2. **Accelerometer Scale Normalization:** The gravity vector magnitude $g$ is estimated from the resting accelerometer values. The accelerometer channels are divided by this scale factor: $\mathbf{a}_{normalized} = \mathbf{a}_{raw} / g$, mapping 1 g of gravity to exactly 1.0 units.
-3. **Dynamic Calibration Mapping:** A single recording session has multiple static calibrations (recorded every `max_samples_before_recalibration` gestures to adjust for thermal drift). The processing pipeline dynamically reads the `"recalibrations"` log in `recording_session.json` and associates each gesture sample (e.g., sample $15$) with the **closest prior calibration file** (e.g., the calibration recorded at sample index $0$). This ensures the calibration offsets are always locally fresh.
+3. **Dynamic Calibration Mapping:** A single recording session has multiple static calibrations (recorded every `max_samples_before_recalibration` gestures to adjust for thermal drift). The processing pipeline dynamically reads the `"recalibrations"` log in [`recording_session.json`](data_recording_pipeline.md#recording-session-properties-structure-recording_sessionjson) and associates each gesture sample (e.g., sample $15$) with the **closest prior calibration file** (e.g., the calibration recorded at sample index $0$). This ensures the calibration offsets are always locally fresh.
 
 
 ## Integration of Calibration: Training vs. Real-Time Inference
@@ -275,7 +275,7 @@ To correct physical sensor defects and offsets, the pipeline runs a **static cal
 It is critical that the calibration pipeline used during offline model training matches the real-time classification runtime:
 
 * **Offline Training Pipeline:**
-  * When loading the dataset via `load_dataset`, the pipeline reads the `.csv` files for calibration.
+  * When loading the dataset via [`load_dataset()`](../src/data_fusion_project/processing/dataset.py), the pipeline reads the `.csv` files for calibration.
   * It computes the calibration parameters (bias values and scaling factors) from each static file.
   * It subtracts the gyro bias and scales the accelerometer values for all samples associated with that calibration run.
   * This ensures the CNN models are trained on **perfectly clean, zero-bias, gravity-normalized waveforms**, allowing the model to focus purely on the shape and trajectory of the gesture, decoupled from hardware-specific variances.
@@ -450,7 +450,7 @@ Hardcoding the feature shapes or indices in model code is a major anti-pattern. 
    wrist_indices = [i for i, name in enumerate(dataset.channel_names) if "IMU1" in name]
    finger_indices = [i for i, name in enumerate(dataset.channel_names) if "IMU2" in name]
    ```
-3. **Decoupled Configuration:** We can configure the features via `PipelineConfig` parameters (e.g. `filters.enabled=True`, `features.include_diff_acc=True`). The training loop loads the configured dataset, inspects its channels, and passes it to the model.
+3. **Decoupled Configuration:** We can configure the features via [`PipelineConfig`](data_processing_pipeline.md) parameters (e.g. `filters.enabled=True`, `features.include_diff_acc=True`). The training loop loads the configured dataset, inspects its channels, and passes it to the model.
 
 This decoupling allows us to iterate on feature engineering (e.g. adding relative yaw, lowpass filters, or jerk derivatives) and benchmark different architectures (Single-Branch, Multi-Branch, LSTM) completely independently without rewriting any model code.
 

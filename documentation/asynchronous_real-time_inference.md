@@ -56,7 +56,7 @@ The real-time inference system executes in the following sequence:
 
 # Asynchronous Data Grabber - Technical Documentation
 
-This document describes the design, architecture, implementation, and usage of the **Asynchronous Data Grabber** (`AsynchronousDataGrabber`) implemented in `src/data_fusion_project/inference/data_grabber.py`.
+This document describes the design, architecture, implementation, and usage of the **Asynchronous Data Grabber** (`AsynchronousDataGrabber`) implemented in [`data_grabber.py`](../src/data_fusion_project/inference/data_grabber.py).
 
 ---
 
@@ -173,7 +173,7 @@ To ensure slide actions are only triggered once per intended gesture, the system
 
 # Live Performance Evaluation System
 
-To evaluate real-time gesture recognition accuracy without requiring a pre-labeled test suite, the project includes an **objection-based evaluation system** (`LivePerformanceEvaluator` in `src/data_fusion_project/inference/live_evaluation.py`).
+To evaluate real-time gesture recognition accuracy without requiring a pre-labeled test suite, the project includes an **objection-based evaluation system** (`LivePerformanceEvaluator` in [`live_evaluation.py`](../src/data_fusion_project/inference/live_evaluation.py)).
 
 ## 1. Objection Interaction Model
 
