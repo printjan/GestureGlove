@@ -4,18 +4,18 @@
         "model_type": "late_fusion_cnn",
         "threshold": 0.95,
         "cooldown_s": 2.0,
-        "duration_s": 153.64,
+        "duration_s": 436.31,
         "objection_window_s": 3.0,
         "enable_fn": true,
-        "n_fire_events": 38,
-        "n_miss_events": 2
+        "n_fire_events": 76,
+        "n_miss_events": 8
     },
     "totals": {
-        "tp": 38,
+        "tp": 76,
         "fp": 0,
-        "fn": 2,
+        "fn": 8,
         "precision": 1.0,
-        "recall": 0.95,
+        "recall": 0.9047619047619048,
         "idle_false_triggers": 0
     },
     "per_class": {
@@ -27,21 +27,21 @@
             "recall": null
         },
         "swipe_left": {
-            "tp": 6,
+            "tp": 7,
             "fp": 0,
-            "fn": 2,
+            "fn": 5,
             "precision": 1.0,
-            "recall": 0.75
+            "recall": 0.5833333333333334
         },
         "swipe_right": {
-            "tp": 5,
+            "tp": 12,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
             "recall": 1.0
         },
         "circle_cw": {
-            "tp": 5,
+            "tp": 9,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
@@ -55,25 +55,25 @@
             "recall": 1.0
         },
         "fist": {
-            "tp": 4,
+            "tp": 15,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
             "recall": 1.0
         },
         "jerk_down": {
-            "tp": 7,
+            "tp": 14,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
             "recall": 1.0
         },
         "jerk_up": {
-            "tp": 6,
+            "tp": 14,
             "fp": 0,
-            "fn": 0,
+            "fn": 3,
             "precision": 1.0,
-            "recall": 1.0
+            "recall": 0.8235294117647058
         }
     },
     "confusion_matrix": {
@@ -99,63 +99,53 @@
                 0
             ],
             [
-                2,
-                6,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
                 5,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                5,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                0,
-                5,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                0,
-                0,
-                4,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
                 7,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                12,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                9,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                5,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                15,
+                0,
                 0
             ],
             [
@@ -165,8 +155,18 @@
                 0,
                 0,
                 0,
+                14,
+                0
+            ],
+            [
+                3,
                 0,
-                6
+                0,
+                0,
+                0,
+                0,
+                0,
+                14
             ]
         ]
     }

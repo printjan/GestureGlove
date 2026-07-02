@@ -4,19 +4,19 @@
         "model_type": "early_fusion_cnn",
         "threshold": 0.95,
         "cooldown_s": 2.0,
-        "duration_s": 220.89,
-        "objection_window_s": 3.0,
+        "duration_s": 448.69,
+        "objection_window_s": 5.0,
         "enable_fn": true,
-        "n_fire_events": 69,
-        "n_miss_events": 0
+        "n_fire_events": 131,
+        "n_miss_events": 3
     },
     "totals": {
-        "tp": 69,
-        "fp": 0,
-        "fn": 0,
-        "precision": 1.0,
-        "recall": 1.0,
-        "idle_false_triggers": 0
+        "tp": 130,
+        "fp": 1,
+        "fn": 3,
+        "precision": 0.9923664122137404,
+        "recall": 0.9774436090225563,
+        "idle_false_triggers": 1
     },
     "per_class": {
         "none": {
@@ -27,52 +27,52 @@
             "recall": null
         },
         "swipe_left": {
-            "tp": 9,
+            "tp": 26,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
             "recall": 1.0
         },
         "swipe_right": {
-            "tp": 8,
+            "tp": 22,
             "fp": 0,
-            "fn": 0,
+            "fn": 1,
             "precision": 1.0,
-            "recall": 1.0
+            "recall": 0.9565217391304348
         },
         "circle_cw": {
-            "tp": 10,
+            "tp": 12,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
             "recall": 1.0
         },
         "circle_ccw": {
-            "tp": 7,
+            "tp": 13,
             "fp": 0,
-            "fn": 0,
+            "fn": 1,
             "precision": 1.0,
-            "recall": 1.0
+            "recall": 0.9285714285714286
         },
         "fist": {
-            "tp": 10,
+            "tp": 18,
             "fp": 0,
-            "fn": 0,
+            "fn": 1,
             "precision": 1.0,
-            "recall": 1.0
+            "recall": 0.9473684210526315
         },
         "jerk_down": {
-            "tp": 10,
+            "tp": 19,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
             "recall": 1.0
         },
         "jerk_up": {
-            "tp": 15,
-            "fp": 0,
+            "tp": 20,
+            "fp": 1,
             "fn": 0,
-            "precision": 1.0,
+            "precision": 0.9523809523809523,
             "recall": 1.0
         }
     },
@@ -96,22 +96,12 @@
                 0,
                 0,
                 0,
-                0
+                1
             ],
             [
                 0,
-                9,
+                26,
                 0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                8,
                 0,
                 0,
                 0,
@@ -119,10 +109,10 @@
                 0
             ],
             [
+                1,
                 0,
+                22,
                 0,
-                0,
-                10,
                 0,
                 0,
                 0,
@@ -132,9 +122,29 @@
                 0,
                 0,
                 0,
+                12,
                 0,
-                7,
                 0,
+                0,
+                0
+            ],
+            [
+                1,
+                0,
+                0,
+                0,
+                13,
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                0,
+                0,
+                0,
+                0,
+                18,
                 0,
                 0
             ],
@@ -144,18 +154,8 @@
                 0,
                 0,
                 0,
-                10,
                 0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                10,
+                19,
                 0
             ],
             [
@@ -166,7 +166,7 @@
                 0,
                 0,
                 0,
-                15
+                20
             ]
         ]
     }

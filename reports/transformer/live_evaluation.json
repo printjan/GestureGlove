@@ -1,22 +1,22 @@
 {
     "session_meta": {
-        "model_dir": "models/early_fusion_single_branch_1d_cnn/training_session_2_20260701_223131",
-        "model_type": "early_fusion_cnn",
+        "model_dir": "models/slef_attention_temporal_transformer/training_session_0_20260701_223842",
+        "model_type": "temporal_transformer",
         "threshold": 0.95,
         "cooldown_s": 2.0,
-        "duration_s": 48.09,
-        "objection_window_s": 3.0,
+        "duration_s": 511.28,
+        "objection_window_s": 5.0,
         "enable_fn": true,
-        "n_fire_events": 1,
-        "n_miss_events": 0
+        "n_fire_events": 66,
+        "n_miss_events": 10
     },
     "totals": {
-        "tp": 1,
-        "fp": 0,
-        "fn": 0,
-        "precision": 1.0,
-        "recall": 1.0,
-        "idle_false_triggers": 0
+        "tp": 62,
+        "fp": 4,
+        "fn": 10,
+        "precision": 0.9393939393939394,
+        "recall": 0.8611111111111112,
+        "idle_false_triggers": 4
     },
     "per_class": {
         "none": {
@@ -27,53 +27,53 @@
             "recall": null
         },
         "swipe_left": {
-            "tp": 0,
+            "tp": 9,
             "fp": 0,
-            "fn": 0,
-            "precision": null,
-            "recall": null
+            "fn": 4,
+            "precision": 1.0,
+            "recall": 0.6923076923076923
         },
         "swipe_right": {
-            "tp": 0,
+            "tp": 13,
             "fp": 0,
-            "fn": 0,
-            "precision": null,
-            "recall": null
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.9285714285714286
         },
         "circle_cw": {
-            "tp": 0,
-            "fp": 0,
-            "fn": 0,
-            "precision": null,
-            "recall": null
-        },
-        "circle_ccw": {
-            "tp": 0,
-            "fp": 0,
-            "fn": 0,
-            "precision": null,
-            "recall": null
-        },
-        "fist": {
-            "tp": 1,
+            "tp": 9,
             "fp": 0,
             "fn": 0,
             "precision": 1.0,
             "recall": 1.0
         },
-        "jerk_down": {
-            "tp": 0,
+        "circle_ccw": {
+            "tp": 8,
             "fp": 0,
             "fn": 0,
-            "precision": null,
-            "recall": null
+            "precision": 1.0,
+            "recall": 1.0
+        },
+        "fist": {
+            "tp": 9,
+            "fp": 0,
+            "fn": 1,
+            "precision": 1.0,
+            "recall": 0.9
+        },
+        "jerk_down": {
+            "tp": 14,
+            "fp": 4,
+            "fn": 0,
+            "precision": 0.7777777777777778,
+            "recall": 1.0
         },
         "jerk_up": {
             "tp": 0,
             "fp": 0,
-            "fn": 0,
+            "fn": 4,
             "precision": null,
-            "recall": null
+            "recall": 0.0
         }
     },
     "confusion_matrix": {
@@ -95,22 +95,12 @@
                 0,
                 0,
                 0,
-                0,
+                4,
                 0
             ],
             [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
+                4,
+                9,
                 0,
                 0,
                 0,
@@ -119,33 +109,43 @@
                 0
             ],
             [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
-            [
-                0,
-                0,
-                0,
-                0,
-                0,
                 1,
                 0,
+                13,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                9,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                8,
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                0,
+                0,
+                0,
+                0,
+                9,
+                0,
                 0
             ],
             [
@@ -155,11 +155,11 @@
                 0,
                 0,
                 0,
-                0,
+                14,
                 0
             ],
             [
-                0,
+                4,
                 0,
                 0,
                 0,
