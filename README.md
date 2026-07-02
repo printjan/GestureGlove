@@ -1,5 +1,6 @@
 # IMU Gesture Glove
 
+![IMU Gesture Glove](gesture_glove_presentation/gesture-glove.png)
 
 ## Team
 

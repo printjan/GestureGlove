@@ -20,11 +20,51 @@ All three models were trained using identical hyperparameters and pre-processing
 
 ## 2. Overall Performance Comparison
 
+### 2.1 Offline Test-Set Metrics
+
 | Model Architecture | Preset | Parameter Count | Test Accuracy | Macro F1-Score | Best Val Loss | Stopped Epoch (Best Epoch) | Target Run Subdirectory |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Early Fusion CNN** | Standard | 10,840 | **98.80%** | **0.9900** | 0.0422 | 70 (57) | [training_session_2_20260701_223131](../models/early_fusion_single_branch_1d_cnn/training_session_2_20260701_223131/) |
 | **Temporal Transformer** | Standard | 79,256 | **98.40%** | **0.9866** | 0.0758 | 36 (16) | [training_session_0_20260701_223842](../models/slef_attention_temporal_transformer/training_session_0_20260701_223842/) |
 | **Late Fusion CNN** | Standard | 18,968 | **99.20%** | **0.9933** | 0.0540 | 44 (24) | [training_session_0_20260701_225609](../models/late_fusion_multi_branch_1d_cnn/training_session_0_20260701_225609/) |
+
+### 2.2 Real-Time Live Evaluation
+
+Each model was additionally evaluated in a real-time, on-hardware inference session using the [objection-based live evaluation pipeline](real_time_inference_pipeline.md) (`--evaluate`). The operator performed live gestures with the physical glove and had a configurable objection window to flag false positives (FP) or signal missed gestures (FN). All sessions used a confidence threshold of $0.95$ and a cooldown of $2.0$ seconds. Full evaluation reports are stored in the [`reports/`](../reports/) directory.
+
+#### Overall Live Metrics
+
+| Model Architecture | Duration | Gestures Fired | TP | FP | FN | Idle False Triggers | Live Precision | Live Recall | Live F1-Score |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Early Fusion CNN** | 448.7 s | 131 | 130 | 1 | 3 | 1 | **99.24%** | **97.74%** | **98.48%** |
+| **Late Fusion CNN** | 436.3 s | 76 | 76 | 0 | 8 | 0 | **100.00%** | **90.48%** | **95.00%** |
+| **Temporal Transformer** | 511.3 s | 66 | 62 | 4 | 10 | 4 | **93.94%** | **86.11%** | **89.86%** |
+
+#### Per-Class Live Recall Comparison
+
+| Gesture Class | Early Fusion CNN | Late Fusion CNN | Temporal Transformer | Analysis |
+| :--- | :---: | :---: | :---: | :--- |
+| **swipe_left** | 100.0% (26/26) | 58.3% (7/12) | 69.2% (9/13) | Late Fusion and Transformer both struggle; gestures fall below confidence threshold and are classified as `none`. |
+| **swipe_right** | 95.7% (22/23) | 100.0% (12/12) | 92.9% (13/14) | Reliable across all models. |
+| **circle_cw** | 100.0% (12/12) | 100.0% (9/9) | 100.0% (9/9) | Perfect live recall across the board. |
+| **circle_ccw** | 92.9% (13/14) | 100.0% (5/5) | 100.0% (8/8) | Near-perfect; Early Fusion had 1 miss. |
+| **fist** | 94.7% (18/19) | 100.0% (15/15) | 90.0% (9/10) | Good overall; finger-contraction dynamics translate well. |
+| **jerk_down** | 100.0% (19/19) | 100.0% (14/14) | 100.0% (14/14) | Perfect live recall across the board. |
+| **jerk_up** | 100.0% (20/20) | 82.4% (14/17) | 0.0% (0/4) | **Critical Transformer failure** — all `jerk_up` attempts were missed. Late Fusion also shows notable drop. |
+
+#### Live Confusion Matrices
+
+The confusion matrices below visualize the actual (ground truth) versus predicted (fired) gesture classifications from each live evaluation session:
+
+| Early Fusion CNN | Late Fusion CNN | Temporal Transformer |
+| :---: | :---: | :---: |
+| ![Early Fusion CNN Live Confusion Matrix](../reports/early_fusion/live_confusion_matrix.png) | ![Late Fusion CNN Live Confusion Matrix](../reports/late_fusion/live_confusion_matrix.png) | ![Temporal Transformer Live Confusion Matrix](../reports/transformer/live_confusion_matrix.png) |
+
+#### Analysis: Offline vs. Real-Time Performance Gap
+
+1.  **Early Fusion CNN dominates in real-time.** Despite being the smallest model (10,840 parameters), the Early Fusion CNN achieved the best live F1-score (**98.48%**) with only 1 false positive and 3 missed gestures across 131 fired events. Its high recall (97.74%) combined with near-perfect precision (99.24%) makes it the most reliable architecture for production deployment. The offline-to-live performance gap is minimal (~0.4 pp accuracy drop).
+2.  **Late Fusion CNN trades recall for zero false positives.** The Late Fusion CNN fired zero false positives and had no idle false triggers, yielding a perfect 100% live precision. However, it exhibited a significant recall drop to 90.48%, primarily driven by `swipe_left` (58.3% recall — 5 of 12 attempts were missed). This suggests that the dual-branch architecture, while excellent at avoiding false activations, applies stricter confidence thresholds that cause some gestures to fall below the 0.95 detection boundary under real sensor noise.
+3.  **Temporal Transformer suffers the largest real-world degradation.** The Transformer dropped from 98.40% offline accuracy to only 89.86% live F1-score. It produced 4 idle false triggers (all misclassified as `jerk_down`) and completely failed to detect `jerk_up` (0% recall). The `swipe_left` class also degraded to 69.2% recall. This confirms that the Transformer's global attention mechanism, while powerful on clean windowed test data, is more sensitive to the noisy, asynchronous conditions of real-time IMU streaming.
 
 ---
 
@@ -67,9 +107,11 @@ The class-by-class F1-scores across the three models are detailed below:
 
 ## 5. Architectural Conclusions
 
-1.  **Winner: Late Fusion CNN:**
-    The **Late Fusion CNN (Standard)** remains the best-performing model (99.20% accuracy / 0.9933 F1). Keeping the Wrist and Finger branches independent before the dense classification head mirrors the physical layout of the gesture glove (decoupling hand/finger gesture dynamics from overall arm translation movement) and generalizes best.
-2.  **Optuna and Kalman Filter Utility:**
+1.  **Offline Winner: Late Fusion CNN:**
+    The **Late Fusion CNN (Standard)** remains the best-performing model on the held-out test set (99.20% accuracy / 0.9933 F1). Keeping the Wrist and Finger branches independent before the dense classification head mirrors the physical layout of the gesture glove (decoupling hand/finger gesture dynamics from overall arm translation movement) and generalizes best on clean, pre-segmented windows.
+2.  **Real-Time Winner: Early Fusion CNN:**
+    In live on-hardware evaluation, the **Early Fusion CNN** delivered the highest live F1-score (**98.48%**) — outperforming the Late Fusion CNN (95.00%) and the Transformer (89.86%). With only 1 false positive and 3 misses across 131 gesture events, it is the recommended architecture for production deployment. Its compact size (10,840 parameters) also makes it the most efficient choice for resource-constrained inference loops.
+3.  **Optuna and Kalman Filter Utility:**
     The Optuna dynamic feature sweep successfully selected optimal subsets of feature channels (typically including relative yaw, gravity-free linear acceleration, and differential values), which combined with the Kalman filter to elevate performance above the baseline playground experiments.
-3.  **Transformer Generalization:**
-    While the Self-Attention Transformer is highly expressive, it has a larger memory footprint, slower training speed, and is prone to slight overfitting on smaller sequence datasets compared to the spatial weight-sharing of 1D CNNs.
+4.  **Transformer Generalization:**
+    While the Self-Attention Transformer is highly expressive, it has a larger memory footprint, slower training speed, and is prone to slight overfitting on smaller sequence datasets compared to the spatial weight-sharing of 1D CNNs. The real-time evaluation further revealed critical failure modes (0% `jerk_up` recall, 4 idle false triggers), confirming that its global attention mechanism is more sensitive to the noisy, asynchronous conditions of live IMU streaming than the translation-invariant convolution kernels of the CNN architectures.
