@@ -42,6 +42,10 @@
 - Recognize arm- and hand-gestures with wrist worn IMU Sensor.
 - Demonstation: Control power point with hand gestures.
 
+#### Demonstration Video
+
+<video src="gesture_glove_presentation/gesture-glove_presentation-demonstration.mp4" controls width="100%"></video>
+
 ### Possible Future Extension:
 
 - Use finger as an air mouse to interact with the computer.
