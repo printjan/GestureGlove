@@ -46,6 +46,8 @@
 
 <video src="gesture_glove_presentation/gesture-glove_presentation-demonstration.mp4" controls width="100%"></video>
 
+*If the video player above does not render, you can view the video file directly here: [gesture-glove_presentation-demonstration.mp4](gesture_glove_presentation/gesture-glove_presentation-demonstration.mp4)*
+
 ### Possible Future Extension:
 
 - Use finger as an air mouse to interact with the computer.
