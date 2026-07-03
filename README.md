@@ -44,7 +44,7 @@
 
 #### Demonstration Video
 
-<video src="https://raw.githubusercontent.com/printjan/GestureGlove/main/gesture_glove_presentation/gesture-glove_presentation-demonstration.mp4" controls width="100%"></video>
+<video src="gesture_glove_presentation/gesture-glove_presentation-demonstration.mp4" controls width="100%"></video>
 
 ### Possible Future Extension:
 
